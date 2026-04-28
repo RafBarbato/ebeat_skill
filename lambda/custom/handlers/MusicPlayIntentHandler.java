@@ -44,13 +44,11 @@ public class MusicPlayIntentHandler implements IntentRequestHandler {
         converter.setObjectMapper(new ObjectMapper());
         restTemplate.getMessageConverters().add(converter);
 
-        String DB_URI = "https://xzcdfhaylwoqbfucgcau.supabase.co/rest/v1/urls?user_id=eq.raffaele";
-
-        // mock, da prendere da supabase
-        String bearerToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6Y2RmaGF5bHdvcWJmdWNnY2F1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTY5MDExNzgyNiwiZXhwIjoyMDA1NjkzODI2fQ.XvubjHsPBS_c_KMNvy-kW6BJ_h0UnSXObhCxvhs2x2w";
+        String DB_URI = System.getenv("SUPABASE_DB_URI");
+        String bearerToken = System.getenv("SUPABASE_SERVICE_KEY");
 
         HttpHeaders headers = new HttpHeaders();
-        headers.add("apikey", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6Y2RmaGF5bHdvcWJmdWNnY2F1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTY5MDExNzgyNiwiZXhwIjoyMDA1NjkzODI2fQ.XvubjHsPBS_c_KMNvy-kW6BJ_h0UnSXObhCxvhs2x2w");
+        headers.add("apikey", bearerToken);
         headers.add("Authorization", "Bearer "+bearerToken);
         headers.add("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36");
         headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
