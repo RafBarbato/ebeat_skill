@@ -47,6 +47,9 @@ public class MusicPlayIntentHandler implements IntentRequestHandler {
         String DB_URI = System.getenv("SUPABASE_DB_URI");
         String bearerToken = System.getenv("SUPABASE_SERVICE_KEY");
 
+        LOG.info("DB_URI valore: [{}]", DB_URI);
+        LOG.info("SUPABASE_SERVICE_KEY presente: {}", bearerToken != null);
+
         HttpHeaders headers = new HttpHeaders();
         headers.add("apikey", bearerToken);
         headers.add("Authorization", "Bearer "+bearerToken);
@@ -56,10 +59,18 @@ public class MusicPlayIntentHandler implements IntentRequestHandler {
         HttpEntity requestEntity = new HttpEntity(headers);
 
         ResponseEntity<Url[]> response = restTemplate.exchange(DB_URI, HttpMethod.GET, requestEntity, Url[].class);
-        List<Url> urls =  Arrays.asList(response.getBody());
+        List<Url> urls = Arrays.asList(response.getBody());
+
+        LOG.info("Righe restituite da Supabase: {}", urls.size());
+
+        if (urls.isEmpty()) {
+            return handlerInput.getResponseBuilder()
+                    .withSpeech("Nessuna traccia trovata su ebeat.")
+                    .withShouldEndSession(true)
+                    .build();
+        }
 
         String username = urls.get(0).getUser_id();
-
         String url = urls.get(0).getUrl();
         Long offset = urls.get(0).getOffset();
 
