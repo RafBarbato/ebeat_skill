@@ -8,6 +8,7 @@ import com.amazon.ask.model.interfaces.audioplayer.PlayBehavior;
 import org.slf4j.Logger;
 import service.AccountService;
 import service.CurrentTrackService;
+import service.RefreshService;
 import util.CurrentTrack;
 
 import java.util.Optional;
@@ -20,6 +21,7 @@ public class MusicPlayIntentHandler implements IntentRequestHandler {
 
     private final AccountService accountService = new AccountService();
     private final CurrentTrackService currentTrackService = new CurrentTrackService();
+    private final RefreshService refreshService = new RefreshService();
 
     @Override
     public boolean canHandle(HandlerInput handlerInput, IntentRequest intentRequest) {
@@ -60,13 +62,35 @@ public class MusicPlayIntentHandler implements IntentRequestHandler {
         CurrentTrack track = maybeTrack.get();
 
         if (track.isExpired()) {
-            return handlerInput.getResponseBuilder()
-                    .withSpeech("Il link della traccia è scaduto. Riapri l'app ebeat per aggiornarlo.")
-                    .withShouldEndSession(true)
-                    .build();
+            if (track.getYoutube_id() == null) {
+                return handlerInput.getResponseBuilder()
+                        .withSpeech("Il link è scaduto e non posso aggiornarlo automaticamente. Riapri l'app ebeat.")
+                        .withShouldEndSession(true)
+                        .build();
+            }
+            try {
+                LOG.info("URL scaduto, richiedo refresh per youtube_id={}", track.getYoutube_id());
+                refreshService.refresh(email, track.getYoutube_id());
+            } catch (Exception e) {
+                LOG.error("Refresh fallito [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
+                return handlerInput.getResponseBuilder()
+                        .withSpeech("Non sono riuscito ad aggiornare la traccia. Riprova tra poco.")
+                        .withShouldEndSession(true)
+                        .build();
+            }
+
+            Optional<CurrentTrack> refreshed = currentTrackService.findByUserId(email);
+            if (!refreshed.isPresent() || refreshed.get().isExpired()) {
+                return handlerInput.getResponseBuilder()
+                        .withSpeech("Non sono riuscito ad aggiornare la traccia. Riprova tra poco.")
+                        .withShouldEndSession(true)
+                        .build();
+            }
+            track = refreshed.get();
         }
 
         long offset = track.getOffset() != null ? track.getOffset() : 0L;
+        LOG.info("Offset (ms) usato: {}", offset);
         String title = track.getTrack_title() != null ? track.getTrack_title() : "la tua musica";
         String artist = track.getTrack_artist() != null ? track.getTrack_artist() : "";
 

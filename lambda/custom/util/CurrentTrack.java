@@ -14,6 +14,7 @@ public class CurrentTrack {
     Long track_id;
     String track_title;
     String track_artist;
+    String youtube_id;
 
     public Integer getId() { return id; }
     public void setId(Integer id) { this.id = id; }
@@ -44,6 +45,9 @@ public class CurrentTrack {
 
     public String getTrack_artist() { return track_artist; }
     public void setTrack_artist(String track_artist) { this.track_artist = track_artist; }
+
+    public String getYoutube_id() { return youtube_id; }
+    public void setYoutube_id(String youtube_id) { this.youtube_id = youtube_id; }
 
     public boolean isExpired() {
         return url_expires_at != null

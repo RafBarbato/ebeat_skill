@@ -112,6 +112,7 @@ def main():
         "track_title":    title,
         "track_artist":   artist,
         "updated_at":     now_iso,
+        "youtube_id":     video_id,
     }
 
     print("\nAggiornamento Supabase...")

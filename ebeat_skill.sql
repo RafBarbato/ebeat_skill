@@ -11,6 +11,7 @@ ALTER TABLE current_track ADD COLUMN IF NOT EXISTS url_expires_at TIMESTAMPTZ;
 ALTER TABLE current_track ADD COLUMN IF NOT EXISTS track_id       BIGINT;
 ALTER TABLE current_track ADD COLUMN IF NOT EXISTS track_title    TEXT;
 ALTER TABLE current_track ADD COLUMN IF NOT EXISTS track_artist   TEXT;
+ALTER TABLE current_track ADD COLUMN IF NOT EXISTS youtube_id     TEXT;
 
 -- Constraint univoco su user_id (necessario per upsert merge-duplicates)
 DO $$ BEGIN

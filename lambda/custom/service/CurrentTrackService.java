@@ -10,7 +10,10 @@ import org.springframework.http.converter.json.MappingJackson2HttpMessageConvert
 import org.springframework.web.client.RestTemplate;
 import util.CurrentTrack;
 
+import java.time.Instant;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 public class CurrentTrackService {
@@ -46,6 +49,27 @@ public class CurrentTrackService {
             return Optional.empty();
         }
         return Optional.of(body[0]);
+    }
+
+    /**
+     * Aggiorna solo l'offset (e updated_at) per l'utente.
+     */
+    public void updateOffset(String userId, long offsetMs) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("apikey", serviceKey);
+        headers.add("Authorization", "Bearer " + serviceKey);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("offset", offsetMs);
+        body.put("updated_at", Instant.now().toString());
+
+        restTemplate.exchange(
+                trackUri + "?user_id=eq." + userId,
+                HttpMethod.PATCH,
+                new HttpEntity<>(body, headers),
+                Void.class
+        );
     }
 
     private static RestTemplate buildRestTemplate() {
