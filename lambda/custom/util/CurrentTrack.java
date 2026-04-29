@@ -44,4 +44,9 @@ public class CurrentTrack {
 
     public String getTrack_artist() { return track_artist; }
     public void setTrack_artist(String track_artist) { this.track_artist = track_artist; }
+
+    public boolean isExpired() {
+        return url_expires_at != null
+                && url_expires_at.before(new Timestamp(System.currentTimeMillis()));
+    }
 }
