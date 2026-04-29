@@ -9,9 +9,6 @@ import java.util.Optional;
 
 import static com.amazon.ask.request.Predicates.intentName;
 
-// 2018-July-09: AMAZON.FallackIntent is only currently available in en-US locale.
-//              This handler will not be triggered except in that locale, so it can be
-//              safely deployed for any locale.
 public class FallbackIntentHandler implements IntentRequestHandler {
 
     @Override
@@ -21,10 +18,11 @@ public class FallbackIntentHandler implements IntentRequestHandler {
 
     @Override
     public Optional<Response> handle(HandlerInput handlerInput, IntentRequest intentRequest) {
-        final String speechText = "Sorry, I don't know that. You can try saying help!";
+        final String speechText = "Non ho capito. Prova a dire play per ascoltare la tua musica, oppure aiuto.";
+        final String repromptText = "Dì play per avviare la riproduzione.";
         return handlerInput.getResponseBuilder()
                 .withSpeech(speechText)
-                .withReprompt("You can try saying help!")
+                .withReprompt(repromptText)
                 .build();
     }
 

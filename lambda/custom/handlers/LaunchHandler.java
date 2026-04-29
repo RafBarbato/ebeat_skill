@@ -17,7 +17,7 @@ public class LaunchHandler implements LaunchRequestHandler {
 
     @Override
     public Optional<Response> handle(HandlerInput handlerInput, LaunchRequest launchRequest) {
-        final String speechText = "Benvenuto su eBeat! Cosa vuoi ascoltare in questo secondo test?";
+        final String speechText = "Benvenuto su eBeat! Dì play per avviare l'ascolto!";
         return handlerInput.getResponseBuilder()
                 .withSpeech(speechText)
                 //.withSimpleCard("Premium Hello World", speechText)

@@ -20,12 +20,11 @@ public class GenericExceptionHandler implements ExceptionHandler {
 
     @Override
     public Optional<Response> handle(HandlerInput input, Throwable throwable) {
-        throwable.printStackTrace();
-        LOG.debug("Error message : " + throwable.getMessage());
-        final String speechText = "Sorry, I can't understand the command, please say it again";
+        LOG.error("Errore non gestito", throwable);
+        final String speechText = "Si è verificato un errore. Riprova tra poco.";
         return input.getResponseBuilder()
                 .withSpeech(speechText)
-                .withReprompt(speechText)
+                .withShouldEndSession(true)
                 .build();
     }
 }

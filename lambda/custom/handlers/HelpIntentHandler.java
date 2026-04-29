@@ -16,10 +16,11 @@ public class HelpIntentHandler implements IntentRequestHandler {
 
     @Override
     public Optional<Response> handle(HandlerInput handlerInput, IntentRequest intentRequest) {
-        final String speechText = "You can say hello to me! How can I help?";
+        final String speechText = "Con ebeat puoi riprendere l'ascolto dall'app. Dì play per avviare la riproduzione, oppure stop per fermarla.";
+        final String repromptText = "Cosa vuoi fare? Dì play per ascoltare la tua musica.";
         return handlerInput.getResponseBuilder()
                 .withSpeech(speechText)
-                .withReprompt(speechText)
+                .withReprompt(repromptText)
                 .build();
     }
 
