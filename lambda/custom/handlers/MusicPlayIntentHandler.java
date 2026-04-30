@@ -25,11 +25,18 @@ public class MusicPlayIntentHandler implements IntentRequestHandler {
 
     @Override
     public boolean canHandle(HandlerInput handlerInput, IntentRequest intentRequest) {
-        return intentRequest.getIntent().getName().equals("MusicPlayIntent");
+        String name = intentRequest.getIntent().getName();
+        return name.equals("MusicPlayIntent")
+                || name.equals("AMAZON.StartOverIntent")
+                || name.equals("AMAZON.LoopOnIntent");
     }
 
     @Override
     public Optional<Response> handle(HandlerInput handlerInput, IntentRequest intentRequest) {
+        String intentName = intentRequest.getIntent().getName();
+        boolean startOver = intentName.equals("AMAZON.StartOverIntent");
+        boolean loopOn    = intentName.equals("AMAZON.LoopOnIntent");
+
         String accessToken = handlerInput.getRequestEnvelope().getContext().getSystem().getUser().getAccessToken();
         if (accessToken == null) {
             return handlerInput.getResponseBuilder()
@@ -89,14 +96,40 @@ public class MusicPlayIntentHandler implements IntentRequestHandler {
             track = refreshed.get();
         }
 
-        long offset = track.getOffset() != null ? track.getOffset() : 0L;
+        long offset;
+        if (startOver) {
+            offset = 0L;
+            try {
+                currentTrackService.updateOffset(email, 0L);
+            } catch (Exception e) {
+                LOG.warn("Reset offset fallito [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
+            }
+        } else {
+            offset = track.getOffset() != null ? track.getOffset() : 0L;
+        }
         LOG.info("Offset (ms) usato: {}", offset);
+
+        if (loopOn) {
+            try {
+                currentTrackService.setLoopMode(email, true);
+            } catch (Exception e) {
+                LOG.warn("Attivazione loop_mode fallita [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
+            }
+        }
+
         String title = track.getTrack_title() != null ? track.getTrack_title() : "la tua musica";
         String artist = track.getTrack_artist() != null ? track.getTrack_artist() : "";
 
-        String speech = artist.isEmpty()
-                ? "Riproduco " + title + " da ebeat."
-                : "Riproduco " + title + " di " + artist + " da ebeat.";
+        String speech;
+        if (loopOn) {
+            speech = "Riproduco " + title + " in loop.";
+        } else if (startOver) {
+            speech = "Riavvio " + title + " da capo.";
+        } else if (artist.isEmpty()) {
+            speech = "Riproduco " + title + " da ebeat.";
+        } else {
+            speech = "Riproduco " + title + " di " + artist + " da ebeat.";
+        }
 
         return handlerInput.getResponseBuilder()
                 .withSpeech(speech)

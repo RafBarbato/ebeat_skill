@@ -72,6 +72,27 @@ public class CurrentTrackService {
         );
     }
 
+    /**
+     * Attiva o disattiva la modalità loop per l'utente.
+     */
+    public void setLoopMode(String userId, boolean enabled) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("apikey", serviceKey);
+        headers.add("Authorization", "Bearer " + serviceKey);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("loop_mode", enabled);
+        body.put("updated_at", Instant.now().toString());
+
+        restTemplate.exchange(
+                trackUri + "?user_id=eq." + userId,
+                HttpMethod.PATCH,
+                new HttpEntity<>(body, headers),
+                Void.class
+        );
+    }
+
     private static RestTemplate buildRestTemplate() {
         RestTemplate rt = new RestTemplate();
         MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();

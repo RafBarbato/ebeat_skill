@@ -15,6 +15,7 @@ public class CurrentTrack {
     String track_title;
     String track_artist;
     String youtube_id;
+    Boolean loop_mode;
 
     public Integer getId() { return id; }
     public void setId(Integer id) { this.id = id; }
@@ -48,6 +49,9 @@ public class CurrentTrack {
 
     public String getYoutube_id() { return youtube_id; }
     public void setYoutube_id(String youtube_id) { this.youtube_id = youtube_id; }
+
+    public Boolean getLoop_mode() { return loop_mode; }
+    public void setLoop_mode(Boolean loop_mode) { this.loop_mode = loop_mode; }
 
     public boolean isExpired() {
         return url_expires_at != null

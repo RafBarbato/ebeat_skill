@@ -88,6 +88,8 @@ await supabase
 | 5  | Stop della musica                                   | Fatto            |
 | 6  | Aggiornamento traccia attiva su Supabase            | Da fare          |
 | 7  | Passaggio a traccia successiva (playlist)           | Da fare          |
+| 8  | Riavvio della traccia da capo                       | Fatto            |
+| 9  | Riproduzione in loop                                | Fatto            |
 
 ---
 
@@ -182,3 +184,36 @@ await supabase
   2. Aggiornare `current_track` con i dati della nuova traccia.
   3. Emettere `AudioPlayer.Play` con `PlayBehavior.REPLACE_ALL` (intent vocale) o `REPLACE_ENQUEUED` (transizione automatica).
 - **Decisione aperta**: chi pre-carica gli URL della playlist? L'app mobile (semplice ma offline non funziona) o un servizio backend (più robusto ma più infrastruttura).
+
+---
+
+### 8. Riavvio della traccia da capo
+- **Stato**: Fatto.
+- **Trigger**: utente dice *"Alexa, metti da capo"* / *"ricomincia"* / *"start over"*.
+- **Tipo richiesta**: `IntentRequest` con `AMAZON.StartOverIntent`.
+- **Componente**: `MusicPlayIntentHandler` (gestisce sia `MusicPlayIntent` sia `AMAZON.StartOverIntent`).
+- **Flusso**:
+  1. Risolve l'utente come nel caso 3.
+  2. Recupera la traccia corrente (e fa refresh se l'URL è scaduto).
+  3. Forza `offset = 0` e fa PATCH su `current_track.offset` tramite `CurrentTrackService.updateOffset()`.
+  4. Emette `AudioPlayer.Play` con `PlayBehavior.REPLACE_ALL` e `offset = 0`.
+- **Risposta**: speech *"Riavvio &lt;titolo&gt; da capo."* + directive di riproduzione.
+- **Pre-requisito skill model**: `AMAZON.StartOverIntent` aggiunto agli intent della skill nella Alexa Developer Console.
+
+---
+
+### 9. Riproduzione in loop
+- **Stato**: Fatto.
+- **Trigger**: utente dice *"Alexa, riproduci in loop"* / *"metti in loop"*.
+- **Tipo richiesta**: `IntentRequest` con `AMAZON.LoopOnIntent` per attivare; in seguito Alexa invia `AudioPlayer.PlaybackNearlyFinished` ogni volta che la traccia sta per finire.
+- **Componenti**:
+  - `MusicPlayIntentHandler` (gestisce `AMAZON.LoopOnIntent`): setta `loop_mode = true`, avvia la riproduzione.
+  - `PlaybackNearlyFinishedHandler`: nuovo handler che, se `loop_mode = true`, riaccoda la stessa traccia con `PlayBehavior.REPLACE_ENQUEUED` e `offset = 0`.
+  - `CancelAndStopIntentHandler`: disattiva `loop_mode` quando l'utente dice stop, così il prossimo play non parte automaticamente in loop.
+- **Schema**: nuova colonna `loop_mode BOOLEAN NOT NULL DEFAULT FALSE` su `current_track`.
+- **Flusso**:
+  1. Utente: *"Alexa, riproduci in loop"* → `LoopOnIntent` → loop_mode=true + Play.
+  2. Track sta per finire → Alexa invia `PlaybackNearlyFinished` → handler riaccoda la stessa traccia con offset=0.
+  3. Loop continua finché l'utente non dice stop, che disattiva `loop_mode`.
+- **Pre-requisito skill model**: `AMAZON.LoopOnIntent` aggiunto agli intent della skill nella Alexa Developer Console.
+- **Limitazione**: se l'URL scade durante un loop molto lungo, il loop si interrompe. Soluzione futura: integrare il refresh URL anche nel `PlaybackNearlyFinishedHandler`.

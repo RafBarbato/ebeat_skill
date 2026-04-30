@@ -12,6 +12,7 @@ ALTER TABLE current_track ADD COLUMN IF NOT EXISTS track_id       BIGINT;
 ALTER TABLE current_track ADD COLUMN IF NOT EXISTS track_title    TEXT;
 ALTER TABLE current_track ADD COLUMN IF NOT EXISTS track_artist   TEXT;
 ALTER TABLE current_track ADD COLUMN IF NOT EXISTS youtube_id     TEXT;
+ALTER TABLE current_track ADD COLUMN IF NOT EXISTS loop_mode      BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Constraint univoco su user_id (necessario per upsert merge-duplicates)
 DO $$ BEGIN
