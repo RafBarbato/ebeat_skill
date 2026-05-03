@@ -21,10 +21,13 @@ public class MusicPlayIntentHandler implements IntentRequestHandler {
         // AMAZON.ResumeIntent ricade qui: la logica di "ripresa dall'offset"
         // è già quella di MusicPlayIntent, basta lasciare offset e URL come
         // sono in current_track (eventuale refresh URL se scaduto).
+        // SyncIntent (custom, caso 14): rilegge current_track e ri-emette
+        // Play REPLACE_ALL — comando di aggiornamento dopo cambi su app.
         return name.equals("MusicPlayIntent")
                 || name.equals("AMAZON.StartOverIntent")
                 || name.equals("AMAZON.LoopOnIntent")
-                || name.equals("AMAZON.ResumeIntent");
+                || name.equals("AMAZON.ResumeIntent")
+                || name.equals("SyncIntent");
     }
 
     @Override
@@ -42,6 +45,9 @@ public class MusicPlayIntentHandler implements IntentRequestHandler {
                 break;
             case "AMAZON.ResumeIntent":
                 mode = PlaybackStarter.Mode.RESUME;
+                break;
+            case "SyncIntent":
+                mode = PlaybackStarter.Mode.SYNC;
                 break;
             default:
                 mode = PlaybackStarter.Mode.START;

@@ -128,13 +128,14 @@ await supabase
 | 4  | Avvio ultima traccia attiva dopo scadenza URL       | Fatto            |
 | 5  | Stop della musica                                   | Fatto            |
 | 6  | Aggiornamento traccia attiva su Supabase            | Da fare          |
-| 7  | Passaggio a traccia successiva (playlist)           | Da fare          |
+| 7  | Passaggio a traccia successiva (playlist)           | Parziale         |
 | 8  | Riavvio della traccia da capo                       | Fatto            |
 | 9  | Riproduzione in loop                                | Fatto            |
 | 10 | Cambio traccia dall'app (skip manuale utente)       | Parziale         |
 | 11 | Play / Pause / Stop dall'app riflessi su Alexa      | Parziale         |
 | 12 | Mutua esclusione device (single active player)      | Da fare          |
 | 13 | Trasferimento ascolto app → Alexa (non mandatorio)  | Da fare          |
+| 14 | Sync live durante riproduzione Alexa (non mandatorio)| Workaround       |
 
 ---
 
@@ -255,26 +256,33 @@ await supabase
 ---
 
 ### 7. Passaggio a traccia successiva rispetto alla playlist salvata in app
-- **Stato**: Da fare.
+- **Stato**: Parziale (transizione automatica fatta; `AMAZON.NextIntent`
+  vocale ancora da implementare).
 - **Trigger vocale**: utente dice *"Alexa, prossima"* / *"avanti"* durante la riproduzione.
 - **Trigger automatico**: fine della traccia corrente (`AudioPlayer.PlaybackNearlyFinished` / `PlaybackFinished`).
 - **Tipo richiesta**: `IntentRequest` con `AMAZON.NextIntent` **oppure** `AudioPlayer.PlaybackNearlyFinished`.
-- **Componente**: `NextIntentHandler` / `PlaybackNearlyFinishedHandler` (**da implementare**).
+- **Componente**: `PlaybackNearlyFinishedHandler` (fatto), `NextIntentHandler` (da implementare).
 - **Schema scelto**: tabella separata `playback_queue` (vedi sezione in
   cima a questo documento). L'app riempie la coda con N tracce successive
   (es. N=3-5) al `PlaybackActiveTrackChanged`. La skill, alla richiesta di
   skip, legge la riga con `position=1`, la promuove in `current_track` e
   cancella la riga (l'app rifornirà la coda al prossimo
   `PlaybackActiveTrackChanged`).
-- **Flusso**:
-  1. Dal `user_id` leggere `playback_queue` ordinato per `position`.
-  2. Promuovere la riga `position=1` in `current_track` (UPSERT).
-  3. Cancellare la riga promossa: `DELETE … WHERE user_id=? AND position=1`.
-    Le posizioni rimanenti restano "buchi" finché l'app non rifornisce; in
-    alternativa decrementare di 1 le `position` rimaste con un `UPDATE`.
-  4. Emettere `AudioPlayer.Play` con `PlayBehavior.REPLACE_ALL` (intent
-     vocale `AMAZON.NextIntent`) oppure `REPLACE_ENQUEUED` (transizione
-     automatica da `PlaybackNearlyFinished`).
+- **Flusso (transizione automatica, implementato in `PlaybackNearlyFinishedHandler`)**:
+  1. `PlaybackNearlyFinishedHandler` riceve l'evento ~10s prima della fine.
+  2. `PlaybackQueueService.findNext(email)` legge la riga con `position` minima.
+  3. `CurrentTrackService.promoteFromQueue(email, item)`: PATCH su
+     `current_track` con i metadati della coda + `offset = 0`.
+  4. `PlaybackQueueService.delete(email, item.position)` cancella la riga
+     promossa (best-effort, le posizioni rimanenti restano come "buchi"
+     finché l'app non rifornisce — non rinumera).
+  5. Se `url` è null o scaduto su current_track, chiama `refreshService.refresh()`.
+  6. Emette `AudioPlayer.Play` con `PlayBehavior.ENQUEUE`,
+     `expectedPreviousToken = currentToken`, e l'URL nuovo.
+- **Flusso (intent vocale `AMAZON.NextIntent`, da implementare)**:
+  Identico ma con `PlayBehavior.REPLACE_ALL` (interrompe la traccia
+  corrente). Nuovo `NextIntentHandler` da aggiungere in
+  `EbeatStreamHandler`.
 - **Decisione di pre-caricamento URL**: lato app (`playback.service.ts`),
   più semplice — l'app conosce già le tracce successive perché è la stessa
   che ha creato la playlist in memoria. Per le tracce dove l'app non ha
@@ -600,3 +608,35 @@ priorità di porting:
   Il Livello B vale la candela solo se diventa una feature di marketing
   ("trasferisci con un tap"), e in quel caso si fa insieme ai Proactive
   Events necessari per il caso 12.
+
+---
+
+### 14. Sync live durante riproduzione Alexa (non mandatorio)
+- **Stato**: Workaround. **Non mandatorio** — caso d'uso patologico
+  (l'utente smanetta sull'app mentre Alexa sta suonando). Il caso 12
+  scoraggia esplicitamente le interazioni concorrenti con la regola
+  single active player.
+- **Trigger**: l'utente, mentre Alexa sta riproducendo, agisce sull'app
+  beatly (seek a un altro punto, cambio traccia con `current_track` UPSERT
+  diverso, ecc.). L'app aggiorna Supabase ma Alexa **non se ne accorge**:
+  il device AudioPlayer riceve un URL e un offset al momento della
+  directive Play e poi è "cieco" agli aggiornamenti DB. La Lambda è
+  stateless, niente subscription Realtime.
+- **Workaround attuale (`SyncIntent`)**: comando vocale custom che forza
+  la skill a ri-leggere `current_track` e ri-emettere `Play REPLACE_ALL`
+  con i nuovi `url` e `offset`.
+  - **Trigger vocale**: *"Alexa, chiedi a ebeat di aggiornare"* /
+    *"Alexa, aggiorna"* / *"Alexa, sincronizza"*.
+  - **Componente**: `MusicPlayIntentHandler` con `name == "SyncIntent"`,
+    delega a `PlaybackStarter.start(input, Mode.SYNC)`.
+  - **Speech**: *"Aggiorno."* (breve, non invasivo).
+  - **Pre-requisito skill model**: nuovo intent custom `SyncIntent`
+    aggiunto sulla Developer Console con sample utterances *"aggiorna"*,
+    *"sincronizza"*, *"ricarica"*, *"allinea"*, *"rinfresca"*.
+- **Soluzione live (Proactive Events, out-of-scope)**: stesso pattern del
+  caso 12. Il BE persistente, sottoscritto a Supabase Realtime, vede
+  l'UPDATE di `current_track.offset` e invia un Proactive Event ad Alexa
+  che ri-emette `Play REPLACE_ALL` automaticamente. Latenza minima ~5-30s.
+- **Raccomandazione**: tenere il workaround vocale finché serve. È
+  sufficiente per il flusso "ho cambiato qualcosa sull'app, adesso voglio
+  che Alexa si allinei". L'utente accetta di doverlo dire.

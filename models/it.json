@@ -127,6 +127,19 @@
         {
           "name": "AMAZON.ResumeIntent",
           "samples": []
+        },
+        {
+          "name": "SyncIntent",
+          "slots": [],
+          "samples": [
+            "aggiorna",
+            "sincronizza",
+            "ricarica",
+            "allinea",
+            "rinfresca",
+            "aggiornati",
+            "sincronizzati"
+          ]
         }
       ],
       "types": []

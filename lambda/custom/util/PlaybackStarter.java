@@ -32,7 +32,7 @@ public final class PlaybackStarter {
 
     private static final Logger LOG = getLogger(PlaybackStarter.class);
 
-    public enum Mode { START, START_OVER, LOOP_ON, RESUME }
+    public enum Mode { START, START_OVER, LOOP_ON, RESUME, SYNC }
 
     private PlaybackStarter() {}
 
@@ -44,6 +44,7 @@ public final class PlaybackStarter {
         boolean startOver = mode == Mode.START_OVER;
         boolean loopOn    = mode == Mode.LOOP_ON;
         boolean resume    = mode == Mode.RESUME;
+        boolean sync      = mode == Mode.SYNC;
 
         String accessToken = input.getRequestEnvelope().getContext().getSystem().getUser().getAccessToken();
         if (accessToken == null) {
@@ -143,6 +144,8 @@ public final class PlaybackStarter {
             speech = "Riavvio " + title + " da capo.";
         } else if (resume) {
             speech = "Riprendo.";
+        } else if (sync) {
+            speech = "Aggiorno.";
         } else if (artist.isEmpty()) {
             speech = "Riproduco " + title + " da ebeat.";
         } else {
