@@ -98,6 +98,7 @@ await supabase
 | 10 | Cambio traccia dall'app (skip manuale utente)       | Parziale         |
 | 11 | Play / Pause / Stop dall'app riflessi su Alexa      | Parziale         |
 | 12 | Mutua esclusione device (single active player)      | Da fare          |
+| 13 | Trasferimento ascolto app → Alexa (non mandatorio)  | Da fare          |
 
 ---
 
@@ -463,3 +464,52 @@ priorità di porting:
   chiudere il gap "app → Alexa". Senza, la regola è imposta per il 99% dei
   casi (handover naturale dopo pausa); resta il caso patologico in cui
   l'utente attiva l'app mentre Alexa è in playback senza prima fermarla.
+
+---
+
+### 13. Trasferimento ascolto app → Alexa (non mandatorio)
+- **Stato**: Da fare. **Non mandatorio** — feature di comodità, non blocca
+  il flusso principale.
+- **Trigger**: l'utente, dall'app `beatly`, preme un pulsante UI tipo
+  *"Continua su Alexa"* / *"Trasferisci ad Alexa"*. L'idea è continuare
+  l'ascolto della traccia corrente dallo stesso punto sul device Alexa
+  più vicino, senza dover dare un comando vocale.
+- **Pre-requisiti**: caso 6 (sync stato su Supabase) + caso 12 (mutua
+  esclusione device).
+- **Due livelli di implementazione**:
+
+  **Livello A — Handover assistito (semplice, fattibile subito)**
+  - L'app salva su `current_track` lo stato attuale (`offset`, `is_playing
+    = false`, `active_device = NULL`).
+  - L'app ferma localmente la riproduzione.
+  - L'app mostra un prompt all'utente: *"Di' 'Alexa, apri ebeat'"*
+    (eventualmente con audio TTS dell'app stessa).
+  - L'utente dice il comando, scatta `MusicPlayIntent` → la skill legge
+    `current_track`, riprende esattamente dall'offset corrente.
+  - **Costo**: solo UI lato app + un campo `active_device` su Supabase.
+    La skill funziona già grazie al caso 3.
+
+  **Livello B — Handover automatico (complesso, richiede Proactive Events)**
+  - L'app chiama un endpoint del BE (es. `POST /handover-to-alexa`) con
+    `user_id` + `device_target` (opzionale: deviceId Alexa specifico).
+  - Il BE, autenticato con SMAPI access token dell'utente, invia un
+    Proactive Event ad Alexa che fa partire la skill in playback (oppure,
+    se Alexa supporta, una directive cross-skill).
+  - Alexa riceve l'evento, scatta `LaunchRequest` o equivalente, la skill
+    legge `current_track` e riproduce.
+  - **Costo**: registrazione Proactive Events sulla Developer Console +
+    auth flow SMAPI lato BE per ottenere user-bound access token (separato
+    dall'OAuth account linking corrente). Più infrastruttura, più
+    permessi richiesti all'utente, più punti di rottura.
+- **Direzione inversa Alexa → app**: simmetrica ma più semplice. Caso
+  separato (eventuale 14): l'utente dice *"Alexa, passa all'app"* →
+  `MusicPlayIntentHandler` aggiorna `active_device = NULL` + `is_playing
+  = false`, manda directive `Stop`. L'app, in subscription Realtime, vede
+  `is_playing = false` e `active_device = NULL` ma con offset valido →
+  può proporre il resume con un toast.
+- **Raccomandazione**: partire dal Livello A se mai si decide di affrontare
+  questo caso. Costa poco, copre il 90% dello scenario d'uso (l'utente
+  vuole "spostare" l'ascolto, e dire una frase ad Alexa è accettabile).
+  Il Livello B vale la candela solo se diventa una feature di marketing
+  ("trasferisci con un tap"), e in quel caso si fa insieme ai Proactive
+  Events necessari per il caso 12.
