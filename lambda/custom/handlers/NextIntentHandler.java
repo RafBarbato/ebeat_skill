@@ -125,17 +125,10 @@ public class NextIntentHandler implements IntentRequestHandler {
                 return handlerInput.getResponseBuilder().build();
             }
 
-            String title = newTrack.getTrack_title() != null
-                    ? newTrack.getTrack_title() : "la prossima traccia";
-            String artist = newTrack.getTrack_artist() != null
-                    ? newTrack.getTrack_artist() : "";
-            String speech = artist.isEmpty()
-                    ? "Vado avanti con " + title + "."
-                    : "Vado avanti con " + title + " di " + artist + ".";
-
+            // Skip silenzioso: directive Play senza speech, l'utente sente
+            // direttamente la nuova traccia partire.
             String newToken = NEXT_TOKEN_PREFIX + System.currentTimeMillis();
             return handlerInput.getResponseBuilder()
-                    .withSpeech(speech)
                     .addAudioPlayerPlayDirective(
                             PlayBehavior.REPLACE_ALL, 0L, "", newToken, newTrack.getUrl())
                     .withShouldEndSession(true)
