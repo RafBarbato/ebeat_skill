@@ -10,6 +10,7 @@ public class EbeatStreamHandler extends SkillStreamHandler {
                 .addRequestHandlers(
                         new LaunchHandler(),
                         new MusicPlayIntentHandler(),
+                        new PauseIntentHandler(),
                         new CancelAndStopIntentHandler(),
                         new PlaybackStoppedHandler(),
                         new PlaybackNearlyFinishedHandler(),

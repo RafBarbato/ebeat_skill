@@ -1,5 +1,15 @@
 # ebeat skill — appunti di progetto
 
+## Regola: schema SQL canonico in `ebeat_skill.sql`
+
+**Ogni modifica allo schema Supabase del progetto va rispecchiata in
+`ebeat_skill.sql`** (root del repo). È il file fonte di verità: idempotente
+(usa `IF NOT EXISTS` / blocchi `DO $$ ... END $$` con guard) e ri-eseguibile
+in sicurezza sul SQL editor di Supabase. Quando si introduce una nuova
+colonna, tabella, indice, publication Realtime o policy RLS, va aggiunta
+qui prima/insieme al codice che la usa, così da non avere divergenza tra
+documentazione e DB reale.
+
 ## Sincronizzazione traccia corrente: beatly → Supabase
 
 ### Obiettivo
@@ -9,19 +19,45 @@ si è fermato sull'app mobile.
 
 ### Tabella Supabase: `current_track`
 
-| Campo            | Tipo        | Descrizione                                                 |
-|------------------|-------------|-------------------------------------------------------------|
-| `user_id`        | TEXT        | Email dell'utente (chiave di ricerca)                       |
-| `url`            | TEXT        | URL stream YouTube                                          |
-| `url_expires_at` | TIMESTAMPTZ | Scadenza URL (da `expireAt` della cache)                    |
-| `offset`         | BIGINT      | Posizione in millisecondi                                   |
-| `track_id`       | BIGINT      | ID Deezer della traccia                                     |
-| `track_title`    | TEXT        | Titolo                                                      |
-| `track_artist`   | TEXT        | Artista                                                     |
-| `track_duration` | BIGINT      | Durata traccia in **secondi**, usata per clamp dell'offset  |
-| `updated_at`     | TIMESTAMPTZ | Ultimo aggiornamento                                        |
+| Campo                       | Tipo        | Descrizione                                                                          |
+|-----------------------------|-------------|--------------------------------------------------------------------------------------|
+| `user_id`                   | TEXT        | Email dell'utente (chiave di ricerca)                                                |
+| `url`                       | TEXT        | URL stream YouTube                                                                   |
+| `url_expires_at`            | TIMESTAMPTZ | Scadenza URL (da `expireAt` della cache)                                             |
+| `offset`                    | BIGINT      | Posizione in millisecondi                                                            |
+| `track_id`                  | BIGINT      | ID Deezer della traccia                                                              |
+| `track_title`               | TEXT        | Titolo                                                                               |
+| `track_artist`              | TEXT        | Artista                                                                              |
+| `track_duration`            | BIGINT      | Durata traccia in **secondi**, usata per clamp dell'offset                           |
+| `youtube_id`                | TEXT        | ID YouTube della traccia (usato per refresh URL)                                     |
+| `loop_mode`                 | BOOLEAN     | Riproduzione in loop attiva (caso 9)                                                 |
+| `active_device`             | TEXT        | Device attivo: `alexa:<deviceId>`, `app:<installationId>`, `NULL` se nessuno (caso 12) |
+| `is_playing`                | BOOLEAN     | `true` se sta suonando, `false` se in pausa/stop (casi 11/12)                        |
+| `playback_state_changed_at` | TIMESTAMPTZ | Timestamp ultimo cambio di `active_device` o `is_playing`                            |
+| `updated_at`                | TIMESTAMPTZ | Ultimo aggiornamento                                                                 |
 
 La riga è unica per utente (UPSERT su `user_id`).
+
+### Tabella Supabase: `playback_queue` (caso 7)
+
+Coda delle tracce successive precaricate dall'app. Permette skip multipli
+senza re-fetch. Riga per `(user_id, position)`; `position = 1` è la prossima
+traccia dopo quella in `current_track`.
+
+| Campo            | Tipo        | Descrizione                                                  |
+|------------------|-------------|--------------------------------------------------------------|
+| `user_id`        | TEXT        | Email dell'utente (FK logica verso `current_track.user_id`)  |
+| `position`       | INTEGER     | Posizione nella coda (1, 2, 3, …)                            |
+| `youtube_id`     | TEXT        | ID YouTube                                                   |
+| `url`            | TEXT        | URL stream pre-risolto (opzionale, l'app può lasciare NULL)  |
+| `url_expires_at` | TIMESTAMPTZ | Scadenza URL                                                 |
+| `track_id`       | BIGINT      | ID Deezer                                                    |
+| `track_title`    | TEXT        | Titolo                                                       |
+| `track_artist`   | TEXT        | Artista                                                      |
+| `track_duration` | BIGINT      | Durata in secondi                                            |
+| `added_at`       | TIMESTAMPTZ | Timestamp inserimento                                        |
+
+PK: `(user_id, position)`. Indice secondario su `user_id`.
 
 ### Dove intervenire in beatly
 
@@ -86,7 +122,7 @@ await supabase
 
 | #  | Caso                                                | Stato            |
 |----|-----------------------------------------------------|------------------|
-| 1  | Avvio skill da comando vocale                       | Fatto            |
+| 1  | Avvio skill da comando vocale (auto-play)           | Fatto            |
 | 2  | Stop della skill                                    | Fatto            |
 | 3  | Avvio ultima traccia attiva al momento              | Fatto            |
 | 4  | Avvio ultima traccia attiva dopo scadenza URL       | Fatto            |
@@ -102,14 +138,23 @@ await supabase
 
 ---
 
-### 1. Avvio skill da comando vocale
+### 1. Avvio skill da comando vocale (auto-play)
 - **Stato**: Fatto.
 - **Trigger**: utente dice *"Alexa, apri ebeat"*
 - **Tipo richiesta**: `LaunchRequest`
-- **Componente**: `LaunchHandler`
-- **Flusso**: nessuna chiamata esterna, solo benvenuto vocale.
-- **Risposta**: messaggio che invita l'utente a dire *"play"* per avviare la riproduzione.
-- **Stato sessione**: aperta, con reprompt.
+- **Componente**: `LaunchHandler` → delega a `PlaybackStarter.start(input, Mode.START)`.
+- **Flusso**: identico al caso 3 (Avvio ultima traccia attiva). Nessun
+  benvenuto interlocutorio: la skill risponde direttamente con la directive
+  `AudioPlayer.Play` sull'ultima traccia in `current_track`. Se l'URL è
+  scaduto fa refresh (caso 4). Se l'utente non ha account collegato o
+  nessuna traccia, risponde con messaggio appropriato e chiude la sessione.
+- **Risposta**: speech `"Riproduco <titolo> di <artista> da ebeat."` +
+  directive `Play REPLACE_ALL` con offset salvato.
+- **Stato sessione**: chiusa (`withShouldEndSession(true)`); l'audio
+  continua nel contesto AudioPlayer.
+- **Refactor**: la logica di "risolvi utente → leggi traccia → refresh
+  URL → emetti Play" è in `util/PlaybackStarter.java`, condivisa con
+  `MusicPlayIntentHandler` (gestisce anche StartOver, LoopOn, Resume).
 
 ---
 
@@ -153,16 +198,46 @@ await supabase
 
 ---
 
-### 5. Stop della musica
+### 5. Stop / Pausa / Ripresa della musica
 - **Stato**: Fatto.
-- **Trigger**: utente dice *"Alexa, stop"* / *"pausa"* durante la riproduzione audio (skill in stato `AudioPlayer`, sessione già chiusa).
-- **Tipo richiesta**: `IntentRequest` con `AMAZON.StopIntent` / `AMAZON.PauseIntent` / `AMAZON.CancelIntent`, seguito da `AudioPlayer.PlaybackStopped`.
-- **Componenti**: `CancelAndStopIntentHandler` (ferma lo stream) + `PlaybackStoppedHandler` (persiste l'offset).
-- **Flusso**:
-  1. `CancelAndStopIntentHandler` emette `AudioPlayer.Stop` directive per fermare lo stream e chiudere la skill.
-  2. Alexa invia automaticamente `AudioPlayer.PlaybackStopped` con `offsetInMilliseconds` corrente.
-  3. `PlaybackStoppedHandler` risolve l'utente via `AccountService` e fa PATCH su `current_track.offset` tramite `CurrentTrackService.updateOffset()`.
-- **Risultato**: alla successiva invocazione del caso 3, la riproduzione riprende esattamente dallo stesso punto.
+- **Tre comandi distinti**, ciascuno con handler dedicato:
+
+  **Stop** — *"Alexa, stop"* / *"esci"* (`AMAZON.StopIntent`, `AMAZON.CancelIntent`)
+  - Componente: `CancelAndStopIntentHandler`.
+  - Emette `AudioPlayer.Stop` + speech "A presto!" + `withShouldEndSession(true)`.
+  - Disattiva `loop_mode`.
+  - La skill esce; per riprendere serve un nuovo *"Alexa, apri ebeat"*.
+
+  **Pausa** — *"Alexa, pausa"* / *"metti in pausa"* (`AMAZON.PauseIntent`)
+  - Componente: `PauseIntentHandler` (handler dedicato, separato da Stop).
+  - Emette solo `AudioPlayer.Stop` directive: nessun speech, nessuna chiusura.
+  - Alexa invia `AudioPlayer.PlaybackStopped` → `PlaybackStoppedHandler`
+    persiste l'offset su `current_track`.
+  - L'utente può poi dire *"Alexa, riprendi"* senza aprire di nuovo la skill.
+
+  **Ripresa** — *"Alexa, riprendi"* / *"continua"* (`AMAZON.ResumeIntent`)
+  - Componente: `MusicPlayIntentHandler` (`canHandle` accetta anche
+    `AMAZON.ResumeIntent`).
+  - Legge `current_track.offset`, refresh URL se scaduto, emette `AudioPlayer.Play`
+    con `REPLACE_ALL` e l'offset salvato.
+  - Speech: "Riprendo." (corto, non invasivo).
+
+- **Flusso comune Pause→Resume**:
+  1. Utente: *"Alexa, pausa"* → `PauseIntentHandler.handle()` → `Stop` directive.
+  2. Alexa: `AudioPlayer.PlaybackStopped(offsetInMilliseconds=...)`.
+  3. `PlaybackStoppedHandler` salva `offset` su `current_track`.
+  4. Utente: *"Alexa, riprendi"* → `MusicPlayIntentHandler` → legge offset →
+     `Play REPLACE_ALL` da quel punto.
+
+- **Pre-requisito skill model**: `AMAZON.PauseIntent` e `AMAZON.ResumeIntent`
+  aggiunti al modello sulla Developer Console (sono built-in standard, di
+  solito già attivi).
+
+- **Bug storico (corretto 2026-05-03)**: `CancelAndStopIntentHandler`
+  intercettava anche `AMAZON.PauseIntent` e applicava `withShouldEndSession(true)`
+  → la skill usciva dopo "pausa" e *"riprendi"* non aveva handler. Fix:
+  separato `PauseIntentHandler`, aggiunto `AMAZON.ResumeIntent` al
+  `MusicPlayIntentHandler`.
 
 ---
 
@@ -185,14 +260,26 @@ await supabase
 - **Trigger automatico**: fine della traccia corrente (`AudioPlayer.PlaybackNearlyFinished` / `PlaybackFinished`).
 - **Tipo richiesta**: `IntentRequest` con `AMAZON.NextIntent` **oppure** `AudioPlayer.PlaybackNearlyFinished`.
 - **Componente**: `NextIntentHandler` / `PlaybackNearlyFinishedHandler` (**da implementare**).
-- **Pre-requisiti su Supabase (schema da definire)**:
-  - Tabella `playback_queue` (o estensione di `current_track`) con la coda corrente: array di tracce ordinate con `url`, `url_expires_at`, `offset = 0`, metadati.
-  - Oppure: campo `next_track_*` su `current_track` con la sola traccia successiva precaricata dall'app.
-- **Flusso ipotizzato**:
-  1. Dal `user_id` recuperare la playlist o la prossima traccia.
-  2. Aggiornare `current_track` con i dati della nuova traccia.
-  3. Emettere `AudioPlayer.Play` con `PlayBehavior.REPLACE_ALL` (intent vocale) o `REPLACE_ENQUEUED` (transizione automatica).
-- **Decisione aperta**: chi pre-carica gli URL della playlist? L'app mobile (semplice ma offline non funziona) o un servizio backend (più robusto ma più infrastruttura).
+- **Schema scelto**: tabella separata `playback_queue` (vedi sezione in
+  cima a questo documento). L'app riempie la coda con N tracce successive
+  (es. N=3-5) al `PlaybackActiveTrackChanged`. La skill, alla richiesta di
+  skip, legge la riga con `position=1`, la promuove in `current_track` e
+  cancella la riga (l'app rifornirà la coda al prossimo
+  `PlaybackActiveTrackChanged`).
+- **Flusso**:
+  1. Dal `user_id` leggere `playback_queue` ordinato per `position`.
+  2. Promuovere la riga `position=1` in `current_track` (UPSERT).
+  3. Cancellare la riga promossa: `DELETE … WHERE user_id=? AND position=1`.
+    Le posizioni rimanenti restano "buchi" finché l'app non rifornisce; in
+    alternativa decrementare di 1 le `position` rimaste con un `UPDATE`.
+  4. Emettere `AudioPlayer.Play` con `PlayBehavior.REPLACE_ALL` (intent
+     vocale `AMAZON.NextIntent`) oppure `REPLACE_ENQUEUED` (transizione
+     automatica da `PlaybackNearlyFinished`).
+- **Decisione di pre-caricamento URL**: lato app (`playback.service.ts`),
+  più semplice — l'app conosce già le tracce successive perché è la stessa
+  che ha creato la playlist in memoria. Per le tracce dove l'app non ha
+  ancora un URL fresco, può salvare solo `youtube_id` (e metadati) e la
+  skill chiamerà `/refresh-track` come per il caso 4.
 
 ---
 

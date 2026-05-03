@@ -22,9 +22,10 @@ public class CancelAndStopIntentHandler implements IntentRequestHandler {
     @Override
     public boolean canHandle(HandlerInput handlerInput, IntentRequest intentRequest) {
         String name = intentRequest.getIntent().getName();
+        // AMAZON.PauseIntent gestito da PauseIntentHandler — qui solo stop/cancel
+        // (che chiudono davvero la skill).
         return name.equals("AMAZON.StopIntent")
-                || name.equals("AMAZON.CancelIntent")
-                || name.equals("AMAZON.PauseIntent");
+                || name.equals("AMAZON.CancelIntent");
     }
 
     @Override
