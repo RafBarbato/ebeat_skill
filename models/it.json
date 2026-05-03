@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "orecchie",
+      "invocationName": "ebeat test",
       "intents": [
         {
           "name": "AMAZON.CancelIntent",
@@ -122,6 +122,10 @@
         },
         {
           "name": "AMAZON.PauseIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NextIntent",
           "samples": []
         },
         {

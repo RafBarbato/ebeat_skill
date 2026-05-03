@@ -128,7 +128,7 @@ await supabase
 | 4  | Avvio ultima traccia attiva dopo scadenza URL       | Fatto            |
 | 5  | Stop della musica                                   | Fatto            |
 | 6  | Aggiornamento traccia attiva su Supabase            | Da fare          |
-| 7  | Passaggio a traccia successiva (playlist)           | Parziale         |
+| 7  | Passaggio a traccia successiva (playlist)           | Fatto            |
 | 8  | Riavvio della traccia da capo                       | Fatto            |
 | 9  | Riproduzione in loop                                | Fatto            |
 | 10 | Cambio traccia dall'app (skip manuale utente)       | Parziale         |
@@ -256,12 +256,12 @@ await supabase
 ---
 
 ### 7. Passaggio a traccia successiva rispetto alla playlist salvata in app
-- **Stato**: Parziale (transizione automatica fatta; `AMAZON.NextIntent`
-  vocale ancora da implementare).
-- **Trigger vocale**: utente dice *"Alexa, prossima"* / *"avanti"* durante la riproduzione.
+- **Stato**: Fatto.
+- **Trigger vocale**: utente dice *"Alexa, prossima"* / *"avanti"* / *"salta"* durante la riproduzione.
 - **Trigger automatico**: fine della traccia corrente (`AudioPlayer.PlaybackNearlyFinished` / `PlaybackFinished`).
 - **Tipo richiesta**: `IntentRequest` con `AMAZON.NextIntent` **oppure** `AudioPlayer.PlaybackNearlyFinished`.
-- **Componente**: `PlaybackNearlyFinishedHandler` (fatto), `NextIntentHandler` (da implementare).
+- **Componente**: `PlaybackNearlyFinishedHandler` (auto, ENQUEUE) + `NextIntentHandler` (vocale, REPLACE_ALL).
+- **Pre-requisito skill model**: `AMAZON.NextIntent` aggiunto al modello (built-in, niente sample necessari).
 - **Schema scelto**: tabella separata `playback_queue` (vedi sezione in
   cima a questo documento). L'app riempie la coda con N tracce successive
   (es. N=3-5) al `PlaybackActiveTrackChanged`. La skill, alla richiesta di
