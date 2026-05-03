@@ -13,9 +13,12 @@ public class EbeatStreamHandler extends SkillStreamHandler {
                         new CancelAndStopIntentHandler(),
                         new PlaybackStoppedHandler(),
                         new PlaybackNearlyFinishedHandler(),
+                        new PlaybackFailedHandler(),
+                        new PlaybackEventLogHandler(),
                         new HelpIntentHandler(),
                         new FallbackIntentHandler(),
-                        new SessionEndedHandler())
+                        new SessionEndedHandler(),
+                        new UnknownRequestLogHandler())
                 .addExceptionHandlers(new GenericExceptionHandler())
                 .build();
     }

@@ -20,7 +20,12 @@ public class GenericExceptionHandler implements ExceptionHandler {
 
     @Override
     public Optional<Response> handle(HandlerInput input, Throwable throwable) {
-        LOG.error("Errore non gestito", throwable);
+        String requestType = input.getRequest() != null ? input.getRequest().getType() : "?";
+        LOG.error("Errore non gestito [requestType={}, throwableClass={}]: {}",
+                requestType,
+                throwable.getClass().getName(),
+                throwable.getMessage(),
+                throwable);
         final String speechText = "Si è verificato un errore. Riprova tra poco.";
         return input.getResponseBuilder()
                 .withSpeech(speechText)

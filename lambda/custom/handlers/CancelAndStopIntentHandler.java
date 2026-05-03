@@ -29,6 +29,7 @@ public class CancelAndStopIntentHandler implements IntentRequestHandler {
 
     @Override
     public Optional<Response> handle(HandlerInput handlerInput, IntentRequest intentRequest) {
+        LOG.info("CancelAndStopIntentHandler invocato [intent={}]", intentRequest.getIntent().getName());
         String accessToken = handlerInput.getRequestEnvelope().getContext().getSystem().getUser().getAccessToken();
         if (accessToken != null) {
             try {

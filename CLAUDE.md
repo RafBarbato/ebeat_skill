@@ -9,16 +9,17 @@ si è fermato sull'app mobile.
 
 ### Tabella Supabase: `current_track`
 
-| Campo           | Tipo        | Descrizione                                  |
-|-----------------|-------------|----------------------------------------------|
-| `user_id`       | TEXT        | Email dell'utente (chiave di ricerca)        |
-| `url`           | TEXT        | URL stream YouTube                           |
-| `url_expires_at`| TIMESTAMPTZ | Scadenza URL (da `expireAt` della cache)     |
-| `offset`        | BIGINT      | Posizione in millisecondi                    |
-| `track_id`      | BIGINT      | ID Deezer della traccia                      |
-| `track_title`   | TEXT        | Titolo                                       |
-| `track_artist`  | TEXT        | Artista                                      |
-| `updated_at`    | TIMESTAMPTZ | Ultimo aggiornamento                         |
+| Campo            | Tipo        | Descrizione                                                 |
+|------------------|-------------|-------------------------------------------------------------|
+| `user_id`        | TEXT        | Email dell'utente (chiave di ricerca)                       |
+| `url`            | TEXT        | URL stream YouTube                                          |
+| `url_expires_at` | TIMESTAMPTZ | Scadenza URL (da `expireAt` della cache)                    |
+| `offset`         | BIGINT      | Posizione in millisecondi                                   |
+| `track_id`       | BIGINT      | ID Deezer della traccia                                     |
+| `track_title`    | TEXT        | Titolo                                                      |
+| `track_artist`   | TEXT        | Artista                                                     |
+| `track_duration` | BIGINT      | Durata traccia in **secondi**, usata per clamp dell'offset  |
+| `updated_at`     | TIMESTAMPTZ | Ultimo aggiornamento                                        |
 
 La riga è unica per utente (UPSERT su `user_id`).
 
@@ -31,6 +32,9 @@ La riga è unica per utente (UPSERT su `user_id`).
 Quando parte una nuova traccia, eseguire UPSERT con tutti i campi:
 - `url` e `url_expires_at` dalla cache della traccia (campo `expireAt`)
 - `track_id`, `track_title`, `track_artist` dall'oggetto track
+- `track_duration` (secondi, intero) — **importante**: la skill clamper l'offset
+  alla durata, se manca il clamp non si attiva e si rischia un seek oltre la
+  fine del file (Alexa risponde con `MEDIA_ERROR_SERVICE_UNAVAILABLE`).
 - `offset = 0`
 - `updated_at = now()`
 
@@ -63,6 +67,7 @@ await supabase
     track_id: track.provider.track.id,
     track_title: track.title,
     track_artist: track.artist,
+    track_duration: track.duration, // secondi (intero)
     updated_at: new Date().toISOString(),
   }, { onConflict: 'user_id' });
 ```
@@ -199,6 +204,105 @@ await supabase
   4. Emette `AudioPlayer.Play` con `PlayBehavior.REPLACE_ALL` e `offset = 0`.
 - **Risposta**: speech *"Riavvio &lt;titolo&gt; da capo."* + directive di riproduzione.
 - **Pre-requisito skill model**: `AMAZON.StartOverIntent` aggiunto agli intent della skill nella Alexa Developer Console.
+
+---
+
+## Prossimi passi (estratti dall'analisi dell'app beatly)
+
+L'app `beatly` (`C:\Users\Raffaele\IdeaProjects\beatly\app`) riesce a riprodurre
+senza blocchi grazie a 5 livelli che la skill Alexa oggi non ha. Ordinati per
+priorità di porting:
+
+### A. Risoluzione URL multi-strategia / multi-client (priorità ALTA)
+- **Riferimento app**: `src/services/innertube/streaming.service.ts`
+  → `resolveStreamData` cicla su 4 strategie (`track` → `cache` → `music` →
+  `video`) e per ogni ID tenta più client InnerTube via
+  `resolveWithClientStrategies`.
+- **Stato skill**: il backend Node `/refresh-track` usa **yt-dlp single-shot**.
+  Se yt-dlp è bloccato/limitato/stale → URL "ok" ma throttled o invalido →
+  Alexa rimane in buffering o si interrompe.
+- **Vincolo PO Token (scoperto 2026-05-02)**: da fine 2024 YouTube richiede un
+  GVS PO Token per i client `android`/`ios`/`mweb`. Senza token, yt-dlp scarta
+  *tutti* i formati audio HTTPS di quei client. Il client `web` espone solo
+  opus/webm sui video musicali (Alexa non li supporta). L'unico client che a
+  oggi espone ancora i formati 140/139 (m4a/AAC) senza PO Token è
+  **`android_vr`**. Soluzione attuale in `be.js`: cascata
+  `android_vr → web_safari → web` con format selector
+  `140/139/bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[protocol^=m3u8]`.
+- **Vincolo IP locking googlevideo (verificato 2026-05-02, NON bloccante per
+  Alexa)**: le URL googlevideo includono `ip=...` nei `sparams` (parametri
+  firmati). In teoria solo chi le ha richieste dovrebbe poterle consumare. In
+  pratica, **per il client `c=ANDROID_VR` Alexa riproduce comunque** anche se
+  l'IP è diverso. Verificato empiricamente con A/B test: stesso URL servito
+  ad Alexa, riproduzione OK. Causa probabile: il CDN googlevideo è meno
+  rigido sui client di tipo "TV/VR" perché normalmente il device che ottiene
+  l'URL e quello che lo consuma possono divergere (es. cast).
+- **Bug originale che aveva fuorviato la diagnosi (risolto 2026-05-02)**:
+  `current_track.offset = 400000` ms su un file di 271 s → seek oltre fine
+  → Alexa risponde `MEDIA_ERROR_SERVICE_UNAVAILABLE`. Stesso codice di errore
+  che ci aveva fatto sospettare l'IP locking. Fix: aggiunto `track_duration`
+  in `current_track` e clamp dell'offset in
+  `MusicPlayIntentHandler`/`PlaybackFailedHandler` se `offset >= (duration-2)*1000`.
+- **Architettura adottata 2026-05-02**:
+  - **Default**: endpoint `/refresh-track` nel BE Node usa
+    `yt-dlp -j --extractor-args youtube:player_client=android_vr` e salva
+    direttamente l'URL googlevideo in `current_track.url`. Semplice, veloce,
+    nessun upload, nessun PoT, nessun bucket. Funzionante con Alexa.
+  - **Backup**: endpoint `/refresh-track-storage` mantiene la pipeline
+    youtubei.js + bgutils-js (PoT) + Supabase Storage upload. Disponibile
+    come fallback se in futuro YouTube chiude `c=ANDROID_VR` o introduce IP
+    lock rigido. Per attivarlo basta cambiare `BACKEND_REFRESH_URL` della
+    skill a puntare a `/refresh-track-storage`.
+- **Da fare**:
+    1. Pulizia opzionale: rimuovere logging diagnostico `format snapshot` da
+       `resolveStreamForClient` (era utile al debug, ora è rumore).
+    2. Pulizia opzionale: rimuovere il bucket `audio-cache` se decidi di
+       non usare più la variante storage (oppure lasciarlo vuoto, costa 0).
+    3. Per prod: tenere yt-dlp aggiornato (`pip install -U yt-dlp` cron
+       settimanale) — se YouTube cambia il format selector di
+       `c=ANDROID_VR`, una versione vecchia smette di funzionare.
+- **Da fare**:
+  1. Monitorare se YouTube chiude anche `android_vr` — è probabile entro pochi
+     mesi. In quel caso passare a `bgutil-ytdlp-pot-provider` (plugin che
+     genera PO Token automaticamente) oppure migrare a `youtubei.js`.
+  2. Strada definitiva: sostituire yt-dlp con `youtubei.js` lato BE
+     (stessa lib dell'app), che gestisce visitor-data e sessione client-side
+     senza dipendere dai PO Token.
+
+### B. Re-resolution mid-stream (priorità ALTA)
+- **Riferimento app**: `Event.PlaybackState === Error` in `playback.service.ts`
+  + `setPlay` in `libs/player.ts:1004` → controllano `isTrackLocalOrNotExpired`
+  *prima* di chiamare `play()`. Se scaduto, `reloadActive` con `hasReloaded` per
+  evitare loop.
+- **Stato skill**: `PlaybackFailedHandler` già fa retry con `RETRY_TOKEN_PREFIX`,
+  ma:
+  - retry una volta sola (poi abbandona);
+  - non gestisce il caso "buffering silenzioso" (Alexa non emette
+    PlaybackFailed → la skill non interviene mai).
+- **Da fare**: nessuna API Alexa intercetta il "buffering silenzioso", quindi
+  l'unico fix è eliminare le cause a monte (vedi A).
+
+### C. Preload della prossima traccia (priorità MEDIA, blocca il caso 7)
+- **Riferimento app**: `PLAYER.preload(2)` su `Event.PlaybackActiveTrackChanged`
+  + `TrackPlayer.replace` per pre-warm.
+- **Stato skill**: nessun preload. La skill non sa nemmeno qual è la prossima
+  traccia (tabella `playback_queue` non esiste).
+- **Da fare**: definire schema coda su Supabase (decisione aperta: estendere
+  `current_track` con `next_track_*` precaricato dall'app, oppure tabella
+  `playback_queue` separata). Poi gestire `PlaybackNearlyFinished` per
+  enqueue automatico (oggi gestisce solo il loop).
+
+### D. Cache locale automatica (NON applicabile)
+- **Riferimento app**: `TrackCacheService` scarica mp4 cifrato dopo X secondi
+  di ascolto reale.
+- **Stato skill**: Alexa non ha filesystem persistente lato device per audio
+  arbitrario. Salto.
+
+### E. Task queue con priorità e cancellation (priorità BASSA)
+- **Riferimento app**: `taskQueue` con priorità (0/10/20) e
+  `cancellationPolicy`.
+- **Stato skill**: non strettamente necessario in Lambda (single request →
+  single response). Saltabile finché non si introducono job in background.
 
 ---
 

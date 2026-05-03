@@ -32,11 +32,17 @@ public class PlaybackStoppedHandler implements RequestHandler {
     public Optional<Response> handle(HandlerInput input) {
         PlaybackStoppedRequest req = (PlaybackStoppedRequest) input.getRequest();
         Long offset = req.getOffsetInMilliseconds();
+        LOG.info("PlaybackStoppedHandler invocato [offset={}]", offset);
         String accessToken = input.getRequestEnvelope().getContext().getSystem().getUser().getAccessToken();
 
         if (offset == null || accessToken == null) {
             LOG.warn("PlaybackStopped senza offset o accessToken (offset={}, hasToken={})",
                     offset, accessToken != null);
+            return input.getResponseBuilder().build();
+        }
+
+        if (offset == 0L) {
+            LOG.info("PlaybackStopped con offset=0 ignorato (probabile failure o stop a stream non avviato)");
             return input.getResponseBuilder().build();
         }
 

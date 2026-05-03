@@ -16,6 +16,7 @@ public class CurrentTrack {
     String track_artist;
     String youtube_id;
     Boolean loop_mode;
+    Long track_duration;
 
     public Integer getId() { return id; }
     public void setId(Integer id) { this.id = id; }
@@ -52,6 +53,9 @@ public class CurrentTrack {
 
     public Boolean getLoop_mode() { return loop_mode; }
     public void setLoop_mode(Boolean loop_mode) { this.loop_mode = loop_mode; }
+
+    public Long getTrack_duration() { return track_duration; }
+    public void setTrack_duration(Long track_duration) { this.track_duration = track_duration; }
 
     public boolean isExpired() {
         return url_expires_at != null

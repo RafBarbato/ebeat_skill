@@ -6,6 +6,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.client.RestTemplate;
 import util.CurrentTrack;
@@ -94,7 +95,7 @@ public class CurrentTrackService {
     }
 
     private static RestTemplate buildRestTemplate() {
-        RestTemplate rt = new RestTemplate();
+        RestTemplate rt = new RestTemplate(new HttpComponentsClientHttpRequestFactory());
         MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
         converter.setObjectMapper(new ObjectMapper());
         rt.getMessageConverters().add(converter);

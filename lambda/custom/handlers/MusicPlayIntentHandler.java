@@ -34,6 +34,7 @@ public class MusicPlayIntentHandler implements IntentRequestHandler {
     @Override
     public Optional<Response> handle(HandlerInput handlerInput, IntentRequest intentRequest) {
         String intentName = intentRequest.getIntent().getName();
+        LOG.info("MusicPlayIntentHandler invocato [intent={}]", intentName);
         boolean startOver = intentName.equals("AMAZON.StartOverIntent");
         boolean loopOn    = intentName.equals("AMAZON.LoopOnIntent");
 
@@ -106,6 +107,16 @@ public class MusicPlayIntentHandler implements IntentRequestHandler {
             }
         } else {
             offset = track.getOffset() != null ? track.getOffset() : 0L;
+            // Clamp: se l'offset salvato è oltre la durata della traccia,
+            // un seek su Alexa fa scattare MEDIA_ERROR_SERVICE_UNAVAILABLE.
+            // Capita quando l'offset è stato salvato per una traccia precedente
+            // o quando un PlaybackStopped è arrivato dopo la fine del file.
+            if (track.getTrack_duration() != null
+                    && offset >= (track.getTrack_duration() - 2) * 1000L) {
+                LOG.warn("Offset {} ms oltre durata {} s, reset a 0",
+                        offset, track.getTrack_duration());
+                offset = 0L;
+            }
         }
         LOG.info("Offset (ms) usato: {}", offset);
 
