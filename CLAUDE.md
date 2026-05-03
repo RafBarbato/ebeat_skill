@@ -95,6 +95,9 @@ await supabase
 | 7  | Passaggio a traccia successiva (playlist)           | Da fare          |
 | 8  | Riavvio della traccia da capo                       | Fatto            |
 | 9  | Riproduzione in loop                                | Fatto            |
+| 10 | Cambio traccia dall'app (skip manuale utente)       | Parziale         |
+| 11 | Play / Pause / Stop dall'app riflessi su Alexa      | Parziale         |
+| 12 | Mutua esclusione device (single active player)      | Da fare          |
 
 ---
 
@@ -321,3 +324,142 @@ priorità di porting:
   3. Loop continua finché l'utente non dice stop, che disattiva `loop_mode`.
 - **Pre-requisito skill model**: `AMAZON.LoopOnIntent` aggiunto agli intent della skill nella Alexa Developer Console.
 - **Limitazione**: se l'URL scade durante un loop molto lungo, il loop si interrompe. Soluzione futura: integrare il refresh URL anche nel `PlaybackNearlyFinishedHandler`.
+
+---
+
+### 10. Cambio traccia dall'app (skip manuale utente)
+- **Stato**: Parziale.
+- **Trigger**: l'utente, mentre usa l'app `beatly`, fa skip avanti/indietro o
+  seleziona un'altra traccia. L'app esegue UPSERT su `current_track` con il
+  nuovo `youtube_id` (e `track_title`, `track_artist`, `track_duration`,
+  `offset = 0`).
+- **Pre-requisito**: caso 6 (sync app → Supabase) implementato lato app.
+- **Comportamento attuale**:
+  - **Skill ferma** (sessione chiusa, nessun audio in corso): al prossimo
+    `MusicPlayIntent` la skill legge `current_track`, vede il nuovo
+    `youtube_id`, fa refresh se URL scaduto e riproduce la nuova traccia.
+    **Funziona già** grazie al flusso esistente del caso 3.
+  - **Skill in playback attivo**: Alexa continua a riprodurre la traccia
+    precedente fino alla fine o allo stop. Non si "accorge" del cambio
+    perché `AudioPlayer` è una pipeline isolata: la skill Lambda non riceve
+    eventi finché Alexa non emette `PlaybackNearlyFinished`/`Stopped`/etc.
+    **Non implementato** un meccanismo di sincronizzazione live.
+- **Opzioni per la sincronizzazione live (out-of-scope per ora)**:
+  1. **Alexa Proactive Events**: il backend invia un evento `AMAZON.MediaContent.Update`
+    alla skill, che può cambiare track. Richiede registrazione eventi sulla
+    Developer Console + autenticazione SMAPI lato BE.
+  2. **Sfruttare `PlaybackNearlyFinished`**: già scatta ~10s prima della fine
+    della traccia. L'handler può controllare se `current_track.youtube_id` è
+    cambiato rispetto al token corrente e, in tal caso, accodare la nuova
+    traccia (salto del finale di quella vecchia, ma è il prezzo del sync).
+  3. **Comando vocale di refresh**: aggiungere un intent `RefreshIntent`
+    (*"Alexa, sincronizza"*) che forza il re-read di `current_track` e
+    `Play REPLACE_ALL` con la nuova traccia. Soluzione semplice se l'utente
+    accetta di doverlo dire.
+- **Raccomandazione**: tenere come Parziale finché non si decide. Il flusso
+  "skill ferma" è già coperto dal caso 3 e copre la maggior parte degli
+  scenari d'uso reale (l'utente cambia traccia sull'app *prima* di parlare
+  ad Alexa, non durante).
+
+---
+
+### 11. Play / Pause / Stop dall'app riflessi su Alexa
+- **Stato**: Parziale.
+- **Trigger**: l'utente, mentre usa l'app `beatly`, preme play, pausa o stop
+  sulla traccia in riproduzione. L'app aggiorna `current_track`:
+  - **Pause/Stop**: UPSERT con `offset` finale + `updated_at` (caso 6,
+    eventi mobile `PlaybackProgressUpdated` / `PlaybackState=PAUSED|STOPPED`).
+  - **Play da pausa**: nessun update strutturale, l'app continua a fare
+    progress UPSERT mentre suona.
+- **Pre-requisito**: caso 6 implementato lato app (sync app → Supabase).
+- **Comportamento attuale**:
+  - **Skill ferma**: al prossimo `MusicPlayIntent` la skill riprende dal
+    `current_track.offset` salvato dall'app — il punto giusto. Il clamp
+    `track_duration` (caso 5/10) protegge da offset stale. **Funziona
+    già**.
+  - **Skill in playback attivo**:
+    - Se l'app va in pausa, Alexa **non** si ferma. Continua finché l'utente
+      non dice "Alexa stop" o la traccia finisce.
+    - Se l'app fa stop completo, Alexa idem: continua.
+    - Se l'app preme play mentre Alexa già suona → **scenario VIETATO** dal
+      caso 12 (single active player): la riproduzione concorrente non è
+      ammessa. La mutua esclusione va imposta lato app (vedi caso 12).
+  Non implementato un meccanismo di sincronizzazione live perché
+  `AudioPlayer` è isolato dalla Lambda.
+- **Opzioni per la sincronizzazione live (out-of-scope per ora)**:
+  1. **Alexa Proactive Events**: il backend, ricevuto l'UPSERT da app
+     (tramite trigger Supabase Realtime o webhook), invia un evento
+     `AMAZON.MediaContent.Update` o un custom event ad Alexa, che spegne
+     l'audio o lo allinea. Richiede SMAPI + registrazione eventi.
+  2. **Comando vocale espliciato**: l'utente dice *"Alexa, allinea"* /
+     *"Alexa, sincronizza"*. La skill rilegge `current_track` e applica
+     stop o play coerente. Più semplice, costa solo aggiungere un intent.
+  3. **Schema field `is_playing`** su `current_track` (BOOLEAN): l'app lo
+     scrive a ogni cambio di stato, la skill lo controlla a ogni
+     `MusicPlayIntent`/`Resume`/`PlaybackNearlyFinished` per decidere se
+     riprendere o fermare. Migliora coerenza ma non risolve il caso "skill
+     in playback senza eventi entranti".
+- **Raccomandazione**: come per il caso 10, tenere Parziale. La parte già
+  coperta (resume dall'offset corretto al prossimo "Alexa play") è di gran
+  lunga il caso più frequente. Lo stop live di Alexa quando l'app va in
+  pausa è un nice-to-have da affrontare quando si introdurranno i
+  Proactive Events.
+
+---
+
+### 12. Mutua esclusione device (single active player)
+- **Stato**: Da fare.
+- **Regola di sistema**: la riproduzione audio dev'essere attiva su **un solo
+  device alla volta**. Vietate le sovrapposizioni: app e Alexa non possono
+  suonare insieme, due istanze dell'app su device diversi non possono suonare
+  insieme. Quando un device "rivendica" il playback, gli altri devono
+  fermarsi (preferibilmente in modo automatico).
+- **Schema proposto su `current_track`** (migration da fare):
+  - `active_device TEXT` — identificatore canonico del device attivo.
+    Esempi: `'alexa:<deviceId>'`, `'app:<installationId>'`. `NULL` se
+    nessun device sta suonando.
+  - `is_playing BOOLEAN NOT NULL DEFAULT FALSE` — stato corrente
+    (playing / paused-stopped). Distingue "device attivo che suona" da
+    "device attivo in pausa, può riprendere".
+  - `playback_state_changed_at TIMESTAMPTZ` — timestamp dell'ultimo cambio
+    di stato. Utile per ordinamento e per rilevare "rivendicazioni"
+    successive.
+- **Lato app**:
+  - Subito prima di `play()`: UPSERT con `active_device = 'app:...'`,
+    `is_playing = true`. Subscribe a Supabase Realtime su `current_track`:
+    se vede `active_device != self`, chiama `pause()` localmente.
+  - Su `pause()` / `stop()`: UPSERT con `is_playing = false` (lascia
+    `active_device` per consentire il resume sullo stesso device).
+- **Lato skill Alexa**:
+  - In `MusicPlayIntentHandler` prima della directive `Play`: scrive
+    `active_device = 'alexa:<deviceId>'` (`deviceId` viene da
+    `input.getRequestEnvelope().getContext().getSystem().getDevice().getDeviceId()`).
+    Questo "kicka" l'app via Realtime se era attiva.
+  - In `CancelAndStopIntentHandler` (stop su Alexa): UPSERT con
+    `is_playing = false`. Lascia `active_device = 'alexa:...'` per resume.
+  - In `PlaybackStoppedHandler`: idem (offset finale + `is_playing = false`).
+- **Limitazione lato Alexa (ineliminabile senza Proactive Events)**:
+  se l'app rivendica `active_device = 'app:...'` mentre Alexa sta suonando,
+  Alexa **non** si fermerà automaticamente — la Lambda non riceve eventi
+  finché Alexa stessa non emette qualcosa. La regola è quindi rispettata
+  *bilateralmente solo se*:
+    - L'app sta in pausa quando Alexa parte (caso normale di handover).
+    - O si introducono Proactive Events: il BE, su trigger Realtime
+      `active_device != 'alexa:...' AND is_playing = true`, invia
+      a Alexa un evento che fa scattare `AudioPlayer.Stop`.
+  Per ora la copertura è asimmetrica:
+    - **Alexa → app**: ✅ (l'app monitora Realtime e si ferma).
+    - **app → Alexa**: ⚠️ richiede Proactive Events oppure stop vocale
+      manuale dell'utente.
+- **Pre-requisiti per implementare**:
+  1. Migration SQL: aggiungere `active_device`, `is_playing`,
+     `playback_state_changed_at` a `current_track`.
+  2. Aggiornare il caso 6 (sync app → Supabase) per scrivere i nuovi campi.
+  3. Aggiungere subscription Realtime in `playback.service.ts` lato app per
+     reagire ai cambi di `active_device`.
+  4. Modificare la skill Java (handler) per scrivere `active_device` e
+     `is_playing` ai cambi di stato.
+- **Decisione aperta**: se / quando affrontare i Proactive Events per
+  chiudere il gap "app → Alexa". Senza, la regola è imposta per il 99% dei
+  casi (handover naturale dopo pausa); resta il caso patologico in cui
+  l'utente attiva l'app mentre Alexa è in playback senza prima fermarla.
