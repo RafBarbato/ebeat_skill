@@ -1,6 +1,7 @@
 package service;
 
 import org.springframework.web.client.RestClient;
+import util.SupabaseRestClient;
 
 import java.util.Map;
 
@@ -10,14 +11,9 @@ public class AccountService {
     private final String supabaseAuthBase;
 
     public AccountService() {
-        String serviceKey = System.getenv("SUPABASE_SERVICE_KEY");
         String trackUri   = System.getenv("SUPABASE_DB_TRACK_URI");
         this.supabaseAuthBase = trackUri.replaceAll("/rest/v1/.*$", "") + "/auth/v1/admin/users/";
-
-        this.client = RestClient.builder()
-                .defaultHeader("apikey", serviceKey)
-                .defaultHeader("Authorization", "Bearer " + serviceKey)
-                .build();
+        this.client = SupabaseRestClient.create();
     }
 
     /**

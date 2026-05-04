@@ -2,6 +2,7 @@ package service;
 
 import org.springframework.web.client.RestClient;
 import util.QueueItem;
+import util.SupabaseRestClient;
 
 import java.util.Optional;
 
@@ -18,16 +19,11 @@ public class PlaybackQueueService {
     private final String queueUri;
 
     public PlaybackQueueService() {
-        String key      = System.getenv("SUPABASE_SERVICE_KEY");
         String trackUri = System.getenv("SUPABASE_DB_TRACK_URI");
         this.queueUri   = trackUri != null
                 ? trackUri.replace("/current_track", "/playback_queue")
                 : null;
-
-        this.client = RestClient.builder()
-                .defaultHeader("apikey", key)
-                .defaultHeader("Authorization", "Bearer " + key)
-                .build();
+        this.client = SupabaseRestClient.create();
     }
 
     /** Ritorna la prossima riga in coda (position minima) per l'utente. */

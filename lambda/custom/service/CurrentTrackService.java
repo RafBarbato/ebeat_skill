@@ -4,6 +4,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 import util.CurrentTrack;
 import util.QueueItem;
+import util.SupabaseRestClient;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -16,13 +17,8 @@ public class CurrentTrackService {
     private final String trackUri;
 
     public CurrentTrackService() {
-        this.trackUri  = System.getenv("SUPABASE_DB_TRACK_URI");
-        String key     = System.getenv("SUPABASE_SERVICE_KEY");
-
-        this.client = RestClient.builder()
-                .defaultHeader("apikey", key)
-                .defaultHeader("Authorization", "Bearer " + key)
-                .build();
+        this.trackUri = System.getenv("SUPABASE_DB_TRACK_URI");
+        this.client   = SupabaseRestClient.create();
     }
 
     /** Recupera la traccia corrente associata all'utente (filtra per user_id = email). */
