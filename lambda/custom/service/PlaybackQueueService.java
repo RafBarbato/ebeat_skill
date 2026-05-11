@@ -4,6 +4,7 @@ import org.springframework.web.client.RestClient;
 import util.QueueItem;
 import util.SupabaseRestClient;
 
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -39,6 +40,21 @@ public class PlaybackQueueService {
             return Optional.empty();
         }
         return Optional.of(body[0]);
+    }
+
+    /**
+     * Conta le righe in coda per l'utente. Usato dal flusso auto-refill
+     * (caso 15) per decidere se rifornire la coda con tracce correlate.
+     */
+    public int countByUserId(String userId) {
+        if (queueUri == null) return 0;
+
+        Map<?, ?>[] body = client.get()
+                .uri(queueUri + "?user_id=eq." + userId + "&select=position")
+                .retrieve()
+                .body(Map[].class);
+
+        return body == null ? 0 : body.length;
     }
 
     /** Cancella la riga (user_id, position) dalla coda. */

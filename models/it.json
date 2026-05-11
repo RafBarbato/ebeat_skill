@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "ebeat test",
+      "invocationName": "riproduttore",
       "intents": [
         {
           "name": "AMAZON.CancelIntent",
@@ -143,6 +143,28 @@
             "rinfresca",
             "aggiornati",
             "sincronizzati"
+          ]
+        },
+        {
+          "name": "PlayTrackIntent",
+          "slots": [
+            { "name": "query", "type": "AMAZON.SearchQuery" }
+          ],
+          "samples": [
+            "suona {query}",
+            "metti {query}",
+            "mettere {query}",
+            "riproduci {query}",
+            "riprodurre {query}",
+            "voglio sentire {query}",
+            "fammi sentire {query}",
+            "fai partire {query}",
+            "fai sentire {query}",
+            "metti la canzone {query}",
+            "suona la canzone {query}",
+            "riproduci la canzone {query}",
+            "cerca {query}",
+            "trova {query}"
           ]
         }
       ],

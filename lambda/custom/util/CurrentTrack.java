@@ -17,6 +17,7 @@ public class CurrentTrack {
     String youtube_id;
     Boolean loop_mode;
     Long track_duration;
+    Long radio_seed_track_id;
 
     public Integer getId() { return id; }
     public void setId(Integer id) { this.id = id; }
@@ -56,6 +57,9 @@ public class CurrentTrack {
 
     public Long getTrack_duration() { return track_duration; }
     public void setTrack_duration(Long track_duration) { this.track_duration = track_duration; }
+
+    public Long getRadio_seed_track_id() { return radio_seed_track_id; }
+    public void setRadio_seed_track_id(Long radio_seed_track_id) { this.radio_seed_track_id = radio_seed_track_id; }
 
     public boolean isExpired() {
         return url_expires_at != null

@@ -30,6 +30,13 @@ COMMENT ON COLUMN current_track.track_duration IS
 ALTER TABLE current_track ADD COLUMN IF NOT EXISTS active_device             TEXT;
 ALTER TABLE current_track ADD COLUMN IF NOT EXISTS is_playing                BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE current_track ADD COLUMN IF NOT EXISTS playback_state_changed_at TIMESTAMPTZ;
+
+-- Seed Deezer track id per auto-refill radio (caso 15).
+-- Pinned per tutta la sessione di playback: ogni refill di playback_queue
+-- usa questo seed come base per Deezer Radio, senza drift.
+ALTER TABLE current_track ADD COLUMN IF NOT EXISTS radio_seed_track_id BIGINT;
+COMMENT ON COLUMN current_track.radio_seed_track_id IS
+  'Deezer track id usato come seed per Deezer Radio. Pinned per tutta la sessione di playback radio (caso 15 — auto-refill).';
 COMMENT ON COLUMN current_track.active_device IS
   'Identificatore device attivo: alexa:<deviceId>, app:<installationId>, NULL se nessuno (caso 12).';
 COMMENT ON COLUMN current_track.is_playing IS

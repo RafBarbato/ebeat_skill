@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import service.AccountService;
 import service.CurrentTrackService;
 import service.PlaybackQueueService;
+import service.RefillService;
 import service.RefreshService;
 import util.CurrentTrack;
 import util.QueueItem;
@@ -31,10 +32,13 @@ public class NextIntentHandler implements IntentRequestHandler {
     private static final Logger LOG = getLogger(NextIntentHandler.class);
     private static final String NEXT_TOKEN_PREFIX = "ebeat-next-";
 
+    private static final int REFILL_THRESHOLD = 1;
+
     private final AccountService accountService = new AccountService();
     private final CurrentTrackService currentTrackService = new CurrentTrackService();
     private final PlaybackQueueService queueService = new PlaybackQueueService();
     private final RefreshService refreshService = new RefreshService();
+    private final RefillService refillService = new RefillService();
 
     @Override
     public boolean canHandle(HandlerInput handlerInput, IntentRequest intentRequest) {
@@ -123,6 +127,21 @@ public class NextIntentHandler implements IntentRequestHandler {
 
             if (newTrack.getUrl() == null) {
                 return handlerInput.getResponseBuilder().build();
+            }
+
+            // Fallback refill: se l'utente skippa velocemente, PlaybackStarted
+            // potrebbe non scattare in tempo a rifornire la coda (caso 15).
+            try {
+                int queueCount = queueService.countByUserId(email);
+                Long seed = newTrack.getRadio_seed_track_id();
+                if (queueCount <= REFILL_THRESHOLD && seed != null) {
+                    LOG.info("Fallback refill da NextIntent: queue={} <= {}, seed={}",
+                            queueCount, REFILL_THRESHOLD, seed);
+                    refillService.refill(email, seed);
+                }
+            } catch (Exception e) {
+                LOG.warn("Fallback refill fallito (non bloccante) [{}: {}]",
+                        e.getClass().getSimpleName(), e.getMessage());
             }
 
             // Skip silenzioso: directive Play senza speech, l'utente sente

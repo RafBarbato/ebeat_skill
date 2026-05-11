@@ -3,6 +3,7 @@ package service;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 import util.CurrentTrack;
+import util.DeezerTrack;
 import util.QueueItem;
 import util.SupabaseRestClient;
 
@@ -80,6 +81,34 @@ public class CurrentTrackService {
         body.put("track_title", item.getTrack_title());
         body.put("track_artist", item.getTrack_artist());
         body.put("track_duration", item.getTrack_duration());
+        body.put("updated_at", Instant.now().toString());
+
+        client.patch()
+                .uri(trackUri + "?user_id=eq." + userId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    /**
+     * Promuove come traccia corrente un risultato di ricerca Deezer abbinato
+     * a un youtube_id risolto via BE. Metadati dalla risposta Deezer
+     * (canonici), url azzerato: sarà {@link RefreshService} a popolarlo
+     * subito dopo. Caso 15 (ricerca vocale).
+     */
+    public void promoteFromSearch(String userId, DeezerTrack t, String youtubeId) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("offset", 0L);
+        body.put("youtube_id", youtubeId);
+        body.put("url", null);
+        body.put("url_expires_at", null);
+        body.put("track_id", t.getId());
+        body.put("track_title", t.getTitle());
+        body.put("track_artist", t.getArtist());
+        body.put("track_duration", t.getDuration());
+        // Pin del seed Deezer per auto-refill radio (caso 15).
+        body.put("radio_seed_track_id", t.getId());
         body.put("updated_at", Instant.now().toString());
 
         client.patch()

@@ -1,5 +1,26 @@
 # ebeat skill — appunti di progetto
 
+## Vincoli di progetto
+
+**Non scaricare né conservare i file audio.** Per ragioni
+legali/copyright, il backend e la skill **non devono** salvare bytes
+audio (m4a, mp3, ecc.) su disco, bucket o database. Sono consentiti
+solo:
+- URL stream "live" forniti direttamente da YouTube (es. `googlevideo.com/videoplayback?...`).
+- Metadati (titolo, artista, durata, ID di servizio, scadenza URL).
+- Le URL possono essere persistite in Supabase finché valide, ma
+  **non il contenuto audio sottostante**.
+
+**Conseguenza pratica**: la pipeline `/refresh-track-storage` su
+`be.js` (che fa download + upload del file su Supabase Storage bucket
+`audio-cache`) **non va usata in produzione**. Resta nel codice solo
+come riferimento storico; il flusso live è `/refresh-track` (yt-dlp
+android_vr → URL googlevideo passato direttamente ad Alexa). Quando
+yt-dlp viene rate-limited o bloccato da YouTube, la strada giusta è
+risolvere il blocco a monte (aggiornare yt-dlp, ruotare IP, usare
+`youtubei.js` con PoT che restituisce URL googlevideo), **non**
+fare il download del file.
+
 ## Regola: schema SQL canonico in `ebeat_skill.sql`
 
 **Ogni modifica allo schema Supabase del progetto va rispecchiata in
@@ -136,6 +157,7 @@ await supabase
 | 12 | Mutua esclusione device (single active player)      | Da fare          |
 | 13 | Trasferimento ascolto app → Alexa (non mandatorio)  | Da fare          |
 | 14 | Sync live durante riproduzione Alexa (non mandatorio)| Workaround       |
+| 15 | Ricerca traccia via comando vocale (Deezer + YouTube)| Fatto            |
 
 ---
 
@@ -640,3 +662,55 @@ priorità di porting:
 - **Raccomandazione**: tenere il workaround vocale finché serve. È
   sufficiente per il flusso "ho cambiato qualcosa sull'app, adesso voglio
   che Alexa si allinei". L'utente accetta di doverlo dire.
+
+---
+
+### 15. Ricerca traccia via comando vocale
+- **Stato**: Fatto.
+- **Trigger**: *"Alexa, chiedi a ebeat di suonare {song} di {artist}"*
+  (artista opzionale: *"…di suonare imagine"* funziona uguale).
+- **Tipo richiesta**: `IntentRequest` con `PlayTrackIntent` (custom)
+  per il turn 1, `AMAZON.YesIntent` / `AMAZON.NoIntent` per il turn 2.
+- **Componenti**:
+  - `PlayTrackIntentHandler` (turn 1): estrae gli slot, chiama
+    `DeezerService.firstMatch(query)`, salva il candidato in
+    `sessionAttributes.pendingSearch`, risponde *"Ho trovato {title} di
+    {artist}, va bene?"* con `withShouldEndSession(false)`.
+  - `YesIntentHandler` (turn 2, guard `pendingSearch != null`):
+    `YoutubeResolveService.resolveYoutubeId(title, artist, duration)` →
+    `CurrentTrackService.promoteFromSearch(email, deezerTrack, youtubeId)` →
+    `RefreshService.refresh()` → `AudioPlayer.Play REPLACE_ALL`.
+  - `NoIntentHandler` (guard `pendingSearch != null`): pulisce sessione +
+    *"Ok, dimmi un altro brano."*.
+  - `DeezerService`: GET `https://api.deezer.com/search/track?q=...&limit=5`,
+    API pubblica, niente auth.
+  - `YoutubeResolveService`: POST `BACKEND_RESOLVE_URL` con
+    `{title, artist, duration}` → ritorna `{youtube_id, candidates}`.
+- **BE Node (`be.js`)** — nuovo endpoint `POST /resolve-youtube-id`:
+  usa `youtubei.js` (già presente, no PO Token per search anonima),
+  prende top 10 risultati di `yt.music.search(q, {type:'song'})`,
+  scoring `|durationDiff| - (artistMatch ? 100 : 0)`, ritorna il
+  migliore.
+- **Schema**: nessuna modifica a `current_track`. I metadati Deezer
+  vanno in `track_title`/`track_artist`/`track_duration`, il
+  `youtube_id` viene risolto al turn 2. URL stream è popolato da
+  `/refresh-track` come sempre.
+- **Env var skill**: `BACKEND_RESOLVE_URL` (es.
+  `https://<host>/resolve-youtube-id`).
+- **Pre-requisito skill model**: intent custom `PlayTrackIntent` con
+  slot `song: AMAZON.MusicRecording` e `artist: AMAZON.Musician`,
+  più built-in `AMAZON.YesIntent` / `AMAZON.NoIntent` (già nel modello
+  in `models/it.json`).
+- **Razionale split-turn**:
+  - Niente match silenzioso "sbagliato" (lyric video, karaoke, cover):
+    l'utente conferma prima del play.
+  - Ogni turn fa poco lavoro: Deezer è veloce (~300-500 ms), turn 2
+    fa search YouTube + refresh ma può prendersi i suoi 4-6 s senza
+    sforare gli 8 s del timeout Alexa.
+  - Metadati canonici (Deezer) sopravvivono su `current_track`:
+    speech *"Riproduco Imagine di John Lennon."* invece di *"Imagine
+    (Official Video Remastered)"*.
+- **Limitazione**: se l'utente non risponde "sì/no" entro ~8 s la
+  sessione muore e bisogna ricominciare. Niente "second choice" su
+  "no": uscita pulita. Estendibile in futuro per proporre il 2°/3°
+  candidato.
