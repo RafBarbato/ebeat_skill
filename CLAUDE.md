@@ -2,24 +2,57 @@
 
 ## Vincoli di progetto
 
-**Non scaricare né conservare i file audio.** Per ragioni
-legali/copyright, il backend e la skill **non devono** salvare bytes
-audio (m4a, mp3, ecc.) su disco, bucket o database. Sono consentiti
-solo:
+### 1. No download/storage dei file audio
+
+Per ragioni legali/copyright, il backend e la skill **non devono**
+salvare bytes audio (m4a, mp3, ecc.) su disco, bucket o database.
+Sono consentiti solo:
 - URL stream "live" forniti direttamente da YouTube (es. `googlevideo.com/videoplayback?...`).
 - Metadati (titolo, artista, durata, ID di servizio, scadenza URL).
 - Le URL possono essere persistite in Supabase finché valide, ma
   **non il contenuto audio sottostante**.
 
-**Conseguenza pratica**: la pipeline `/refresh-track-storage` su
-`be.js` (che fa download + upload del file su Supabase Storage bucket
-`audio-cache`) **non va usata in produzione**. Resta nel codice solo
-come riferimento storico; il flusso live è `/refresh-track` (yt-dlp
-android_vr → URL googlevideo passato direttamente ad Alexa). Quando
-yt-dlp viene rate-limited o bloccato da YouTube, la strada giusta è
-risolvere il blocco a monte (aggiornare yt-dlp, ruotare IP, usare
-`youtubei.js` con PoT che restituisce URL googlevideo), **non**
-fare il download del file.
+La pipeline `/refresh-track-storage` su `be.js` (download + upload
+su bucket `audio-cache`) è dead code, non va riattivata.
+
+### 2. Niente chiamate YouTube/Deezer dal BE o dalla skill
+
+Sia il BE Node (`alexa-supabase-backend`) sia la Lambda della skill
+girano su IP datacenter condivisi (Scaleway, AWS). YouTube fa rate
+limiting aggressivo + bot detection su questi IP (HTTP 429, "Sign
+in to confirm you're not a bot"). **Solo l'app mobile** può fare
+chiamate a YouTube/InnerTube in modo sostenibile, perché usa l'IP
+residenziale dell'utente.
+
+Conseguenze:
+- Gli endpoint `/refresh-track`, `/resolve-youtube-id`, `/refill-queue`
+  di `be.js` sono **deprecati** (response 410 Gone dal 2026-05-12).
+  Il codice originale è nella history git.
+- La skill non chiama mai più YouTube direttamente né tramite BE.
+- L'app è responsabile di:
+  - Pre-risolvere `current_track.url` + `url_expires_at`
+    (caso 6, evento `PlaybackActiveTrackChanged`).
+  - Popolare `playback_queue` con 10-15 brani della radio
+    YouTube (`yt.music.getUpNext`) ad ogni `PlaybackActiveTrackChanged`,
+    con `url` + `url_expires_at` già risolti per ogni riga.
+- La skill, se trova `url` null o scaduto:
+  - **Su sessione vocale aperta** (`MusicPlayIntent`, `NextIntent`,
+    ecc.): speech *"Apri l'app ebeat per aggiornare la traccia"*
+    e chiude la sessione.
+  - **Su evento AudioPlayer** (`PlaybackNearlyFinished`): nessuna
+    directive, la riproduzione finisce in silenzio. La traccia
+    resta in coda finché l'app non la rifornisce.
+
+### 3. App usa YouTube, non Deezer
+
+L'app mobile beatly usa **solo YouTube/InnerTube** (`yt.music.search`,
+`yt.music.getInfo`, `streaming.service.ts`). Deezer è legacy in fase di
+deprecation (presente solo nel ramo Android Auto e nel fallback
+`resolveTrack` per id senza prefisso).
+
+La skill deve allinearsi a YouTube. Le funzioni Deezer nel codice
+skill (`DeezerService`, `useGetDeezerRadio`, ecc.) sono **legacy** e
+non vanno estese.
 
 ## Regola: schema SQL canonico in `ebeat_skill.sql`
 
@@ -285,31 +318,33 @@ await supabase
 - **Componente**: `PlaybackNearlyFinishedHandler` (auto, ENQUEUE) + `NextIntentHandler` (vocale, REPLACE_ALL).
 - **Pre-requisito skill model**: `AMAZON.NextIntent` aggiunto al modello (built-in, niente sample necessari).
 - **Schema scelto**: tabella separata `playback_queue` (vedi sezione in
-  cima a questo documento). L'app riempie la coda con N tracce successive
-  (es. N=3-5) al `PlaybackActiveTrackChanged`. La skill, alla richiesta di
-  skip, legge la riga con `position=1`, la promuove in `current_track` e
-  cancella la riga (l'app rifornirà la coda al prossimo
-  `PlaybackActiveTrackChanged`).
-- **Flusso (transizione automatica, implementato in `PlaybackNearlyFinishedHandler`)**:
-  1. `PlaybackNearlyFinishedHandler` riceve l'evento ~10s prima della fine.
+  cima a questo documento). L'app riempie la coda con **10-15 tracce
+  successive** (radio YouTube via `yt.music.getUpNext` lato app) al
+  `PlaybackActiveTrackChanged`, con **`url` e `url_expires_at` già
+  risolti** per ogni riga. La skill consuma e basta: niente chiamate
+  YouTube dalla skill o dal BE (vincolo IP residenziale).
+- **Flusso (transizione automatica, `PlaybackNearlyFinishedHandler`)**:
+  1. Riceve l'evento ~10s prima della fine della traccia corrente.
   2. `PlaybackQueueService.findNext(email)` legge la riga con `position` minima.
-  3. `CurrentTrackService.promoteFromQueue(email, item)`: PATCH su
-     `current_track` con i metadati della coda + `offset = 0`.
-  4. `PlaybackQueueService.delete(email, item.position)` cancella la riga
-     promossa (best-effort, le posizioni rimanenti restano come "buchi"
-     finché l'app non rifornisce — non rinumera).
-  5. Se `url` è null o scaduto su current_track, chiama `refreshService.refresh()`.
-  6. Emette `AudioPlayer.Play` con `PlayBehavior.ENQUEUE`,
-     `expectedPreviousToken = currentToken`, e l'URL nuovo.
-- **Flusso (intent vocale `AMAZON.NextIntent`, da implementare)**:
+  3. Se `item.url == null` → **skippa l'enqueue**: la traccia resta in
+     coda finché l'app non popola l'URL. La riproduzione finisce in
+     silenzio dopo la corrente.
+  4. Altrimenti `CurrentTrackService.promoteFromQueue(email, item)`
+     (PATCH `current_track` con metadati della coda + `offset=0`) e
+     `PlaybackQueueService.delete(email, item.position)`.
+  5. Rilettura `current_track`. Se `url null` o `isExpired()` → niente
+     enqueue (silenzio).
+  6. Emette `AudioPlayer.Play(ENQUEUE, 0, currentToken, newToken, url)`.
+- **Flusso (intent vocale `AMAZON.NextIntent`)**:
   Identico ma con `PlayBehavior.REPLACE_ALL` (interrompe la traccia
-  corrente). Nuovo `NextIntentHandler` da aggiungere in
-  `EbeatStreamHandler`.
-- **Decisione di pre-caricamento URL**: lato app (`playback.service.ts`),
-  più semplice — l'app conosce già le tracce successive perché è la stessa
-  che ha creato la playlist in memoria. Per le tracce dove l'app non ha
-  ancora un URL fresco, può salvare solo `youtube_id` (e metadati) e la
-  skill chiamerà `/refresh-track` come per il caso 4.
+  corrente). In più, se url null/scaduto → speech *"Apri l'app ebeat
+  per aggiornare la coda"* + chiude la sessione (sessione vocale
+  attiva, niente refresh server-side).
+- **Refill della coda**: lato app. Quando l'utente apre l'app e
+  riproduce una traccia, l'app deve calcolare la radio YouTube (es.
+  `yt.music.getUpNext(videoId)`) e UPSERT batch di 10-15 brani su
+  `playback_queue` con metadati + url pre-risolto + url_expires_at.
+  La skill non ha mai più un endpoint server di refill.
 
 ---
 
@@ -666,9 +701,19 @@ priorità di porting:
 ---
 
 ### 15. Ricerca traccia via comando vocale
-- **Stato**: Fatto.
-- **Trigger**: *"Alexa, chiedi a ebeat di suonare {song} di {artist}"*
-  (artista opzionale: *"…di suonare imagine"* funziona uguale).
+- **Stato**: **Disabilitato dal 2026-05-12.** L'implementazione attuale
+  (`PlayTrackIntentHandler` → `DeezerService.firstMatch` →
+  `YoutubeResolveService.resolveYoutubeId` → BE `/resolve-youtube-id`)
+  contraddice il vincolo "no chiamate YouTube da BE/skill". Gli endpoint
+  BE sono in 410 Gone, quindi il flusso oggi fallisce.
+- **Re-design futuro (opzione B)**: search vocale via Supabase Realtime
+  (skill scrive `search_request`, app risolve via youtubei.js locale e
+  scrive `search_result`, skill polla 4-5s). Funziona solo con app
+  attiva. Codice attuale di `PlayTrackIntentHandler` / `YesIntentHandler`
+  resta nel repo come scaffold ma non verrà invocato finché non
+  re-implementato.
+- **Trigger originale (per riferimento)**: *"Alexa, chiedi a ebeat di
+  suonare {song} di {artist}"* (artista opzionale).
 - **Tipo richiesta**: `IntentRequest` con `PlayTrackIntent` (custom)
   per il turn 1, `AMAZON.YesIntent` / `AMAZON.NoIntent` per il turn 2.
 - **Componenti**:

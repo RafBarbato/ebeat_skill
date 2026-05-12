@@ -9,7 +9,6 @@ import org.slf4j.Logger;
 import service.AccountService;
 import service.CurrentTrackService;
 import service.PlaybackQueueService;
-import service.RefreshService;
 import util.CurrentTrack;
 import util.QueueItem;
 
@@ -35,7 +34,6 @@ public class PlaybackNearlyFinishedHandler implements RequestHandler {
     private final AccountService accountService = new AccountService();
     private final CurrentTrackService currentTrackService = new CurrentTrackService();
     private final PlaybackQueueService queueService = new PlaybackQueueService();
-    private final RefreshService refreshService = new RefreshService();
 
     @Override
     public boolean canHandle(HandlerInput input) {
@@ -85,21 +83,10 @@ public class PlaybackNearlyFinishedHandler implements RequestHandler {
 
     private Optional<Response> enqueueLoop(HandlerInput input, String currentToken,
                                            String email, CurrentTrack track) {
-        if (track.getYoutube_id() != null) {
-            try {
-                LOG.info("Refresh URL pre-loop per youtube_id={}", track.getYoutube_id());
-                refreshService.refresh(email, track.getYoutube_id());
-                Optional<CurrentTrack> refreshed = currentTrackService.findByUserId(email);
-                if (refreshed.isPresent()) {
-                    track = refreshed.get();
-                }
-            } catch (Exception e) {
-                LOG.warn("Refresh URL pre-loop fallito [{}: {}]",
-                        e.getClass().getSimpleName(), e.getMessage());
-            }
-        }
-        if (track.isExpired()) {
-            LOG.warn("Loop interrotto: URL scaduto e refresh non disponibile");
+        // No refresh server-side: l'URL deve essere già fresca o l'app deve
+        // aggiornarla. Se scaduta, loop si interrompe (silenzio fine traccia).
+        if (track.getUrl() == null || track.isExpired()) {
+            LOG.warn("Loop interrotto: URL null/scaduto, app deve aggiornare");
             return input.getResponseBuilder().build();
         }
         String newToken = LOOP_TOKEN_PREFIX + System.currentTimeMillis();
@@ -113,6 +100,15 @@ public class PlaybackNearlyFinishedHandler implements RequestHandler {
 
     private Optional<Response> enqueueFromQueue(HandlerInput input, String currentToken,
                                                 String email, QueueItem item) {
+        // Se la prossima traccia non ha URL pre-risolto (app non ha ancora
+        // popolato), salta la promozione e lascia la riga in coda. Niente
+        // refresh server-side (vincolo IP residenziale).
+        if (item.getUrl() == null) {
+            LOG.warn("Prossima traccia senza URL pre-risolto (position={}), " +
+                    "attesa app per refill — niente enqueue", item.getPosition());
+            return input.getResponseBuilder().build();
+        }
+
         LOG.info("Promuovo coda position={} youtube_id={} title={}",
                 item.getPosition(), item.getYoutube_id(), item.getTrack_title());
 
@@ -141,29 +137,8 @@ public class PlaybackNearlyFinishedHandler implements RequestHandler {
         }
         CurrentTrack newTrack = reloaded.get();
 
-        // Refresh URL se mancante o scaduto.
         if (newTrack.getUrl() == null || newTrack.isExpired()) {
-            if (newTrack.getYoutube_id() == null) {
-                LOG.warn("URL coda mancante e youtube_id null — abbandono enqueue");
-                return input.getResponseBuilder().build();
-            }
-            try {
-                LOG.info("Refresh URL post-promotion per youtube_id={}",
-                        newTrack.getYoutube_id());
-                refreshService.refresh(email, newTrack.getYoutube_id());
-                Optional<CurrentTrack> refreshed = currentTrackService.findByUserId(email);
-                if (refreshed.isPresent()) {
-                    newTrack = refreshed.get();
-                }
-            } catch (Exception e) {
-                LOG.error("Refresh post-promotion fallito [{}: {}]",
-                        e.getClass().getSimpleName(), e.getMessage());
-                return input.getResponseBuilder().build();
-            }
-        }
-
-        if (newTrack.getUrl() == null) {
-            LOG.warn("URL ancora null dopo refresh — abbandono enqueue");
+            LOG.warn("URL null/scaduta dopo promotion — niente enqueue");
             return input.getResponseBuilder().build();
         }
 

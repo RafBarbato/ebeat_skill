@@ -9,8 +9,6 @@ import org.slf4j.Logger;
 import service.AccountService;
 import service.CurrentTrackService;
 import service.PlaybackQueueService;
-import service.RefillService;
-import service.RefreshService;
 import util.CurrentTrack;
 import util.QueueItem;
 
@@ -32,13 +30,9 @@ public class NextIntentHandler implements IntentRequestHandler {
     private static final Logger LOG = getLogger(NextIntentHandler.class);
     private static final String NEXT_TOKEN_PREFIX = "ebeat-next-";
 
-    private static final int REFILL_THRESHOLD = 1;
-
     private final AccountService accountService = new AccountService();
     private final CurrentTrackService currentTrackService = new CurrentTrackService();
     private final PlaybackQueueService queueService = new PlaybackQueueService();
-    private final RefreshService refreshService = new RefreshService();
-    private final RefillService refillService = new RefillService();
 
     @Override
     public boolean canHandle(HandlerInput handlerInput, IntentRequest intentRequest) {
@@ -68,6 +62,18 @@ public class NextIntentHandler implements IntentRequestHandler {
                         .build();
             }
             QueueItem item = next.get();
+
+            // Se l'URL non è pre-risolto (app non ha ancora popolato),
+            // niente refresh server-side: chiediamo all'utente di aggiornare.
+            if (item.getUrl() == null) {
+                LOG.warn("Prossima traccia senza URL (position={}): app deve aggiornare",
+                        item.getPosition());
+                return handlerInput.getResponseBuilder()
+                        .withSpeech("La prossima traccia non è ancora pronta. Apri l'app ebeat per aggiornare la coda.")
+                        .withShouldEndSession(true)
+                        .build();
+            }
+
             LOG.info("Skip vocale: promuovo coda position={} youtube_id={} title={}",
                     item.getPosition(), item.getYoutube_id(), item.getTrack_title());
 
@@ -98,50 +104,12 @@ public class NextIntentHandler implements IntentRequestHandler {
             }
             CurrentTrack newTrack = reloaded.get();
 
-            // Refresh URL se mancante o scaduto.
             if (newTrack.getUrl() == null || newTrack.isExpired()) {
-                if (newTrack.getYoutube_id() == null) {
-                    LOG.warn("URL coda mancante e youtube_id null");
-                    return handlerInput.getResponseBuilder()
-                            .withSpeech("La prossima traccia non e' disponibile.")
-                            .withShouldEndSession(true)
-                            .build();
-                }
-                try {
-                    LOG.info("Refresh URL post-promotion per youtube_id={}",
-                            newTrack.getYoutube_id());
-                    refreshService.refresh(email, newTrack.getYoutube_id());
-                    Optional<CurrentTrack> refreshed = currentTrackService.findByUserId(email);
-                    if (refreshed.isPresent()) {
-                        newTrack = refreshed.get();
-                    }
-                } catch (Exception e) {
-                    LOG.error("Refresh post-promotion fallito [{}: {}]",
-                            e.getClass().getSimpleName(), e.getMessage());
-                    return handlerInput.getResponseBuilder()
-                            .withSpeech("Non sono riuscito ad aggiornare la traccia.")
-                            .withShouldEndSession(true)
-                            .build();
-                }
-            }
-
-            if (newTrack.getUrl() == null) {
-                return handlerInput.getResponseBuilder().build();
-            }
-
-            // Fallback refill: se l'utente skippa velocemente, PlaybackStarted
-            // potrebbe non scattare in tempo a rifornire la coda (caso 15).
-            try {
-                int queueCount = queueService.countByUserId(email);
-                Long seed = newTrack.getRadio_seed_track_id();
-                if (queueCount <= REFILL_THRESHOLD && seed != null) {
-                    LOG.info("Fallback refill da NextIntent: queue={} <= {}, seed={}",
-                            queueCount, REFILL_THRESHOLD, seed);
-                    refillService.refill(email, seed);
-                }
-            } catch (Exception e) {
-                LOG.warn("Fallback refill fallito (non bloccante) [{}: {}]",
-                        e.getClass().getSimpleName(), e.getMessage());
+                LOG.warn("URL null/scaduto dopo promote — app deve aggiornare");
+                return handlerInput.getResponseBuilder()
+                        .withSpeech("La traccia non è aggiornata. Apri l'app ebeat per aggiornarla.")
+                        .withShouldEndSession(true)
+                        .build();
             }
 
             // Skip silenzioso: directive Play senza speech, l'utente sente

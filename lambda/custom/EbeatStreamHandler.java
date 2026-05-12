@@ -16,7 +16,8 @@ public class EbeatStreamHandler extends SkillStreamHandler {
                         new PauseIntentHandler(),
                         new NextIntentHandler(),
                         new CancelAndStopIntentHandler(),
-                        new PlaybackStartedHandler(),
+                        // PlaybackStartedHandler rimosso: refill server-side deprecato
+                        // (vincolo IP residenziale → app riempie playback_queue).
                         new PlaybackStoppedHandler(),
                         new PlaybackNearlyFinishedHandler(),
                         new PlaybackFailedHandler(),

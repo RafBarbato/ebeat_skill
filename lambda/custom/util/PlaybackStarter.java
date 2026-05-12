@@ -6,7 +6,6 @@ import com.amazon.ask.model.interfaces.audioplayer.PlayBehavior;
 import org.slf4j.Logger;
 import service.AccountService;
 import service.CurrentTrackService;
-import service.RefreshService;
 
 import java.util.Optional;
 
@@ -39,7 +38,6 @@ public final class PlaybackStarter {
     public static Optional<Response> start(HandlerInput input, Mode mode) {
         AccountService accountService = new AccountService();
         CurrentTrackService currentTrackService = new CurrentTrackService();
-        RefreshService refreshService = new RefreshService();
 
         boolean startOver = mode == Mode.START_OVER;
         boolean loopOn    = mode == Mode.LOOP_ON;
@@ -77,32 +75,14 @@ public final class PlaybackStarter {
 
         CurrentTrack track = maybeTrack.get();
 
-        if (track.isExpired()) {
-            if (track.getYoutube_id() == null) {
-                return input.getResponseBuilder()
-                        .withSpeech("Il link è scaduto e non posso aggiornarlo automaticamente. Riapri l'app ebeat.")
-                        .withShouldEndSession(true)
-                        .build();
-            }
-            try {
-                LOG.info("URL scaduto, richiedo refresh per youtube_id={}", track.getYoutube_id());
-                refreshService.refresh(email, track.getYoutube_id());
-            } catch (Exception e) {
-                LOG.error("Refresh fallito [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
-                return input.getResponseBuilder()
-                        .withSpeech("Non sono riuscito ad aggiornare la traccia. Riprova tra poco.")
-                        .withShouldEndSession(true)
-                        .build();
-            }
-
-            Optional<CurrentTrack> refreshed = currentTrackService.findByUserId(email);
-            if (!refreshed.isPresent() || refreshed.get().isExpired()) {
-                return input.getResponseBuilder()
-                        .withSpeech("Non sono riuscito ad aggiornare la traccia. Riprova tra poco.")
-                        .withShouldEndSession(true)
-                        .build();
-            }
-            track = refreshed.get();
+        // URL non risolto o scaduto: la skill non chiama più YouTube (vincolo
+        // IP residenziale). L'app deve aggiornare la traccia su Supabase.
+        if (track.getUrl() == null || track.isExpired()) {
+            LOG.warn("URL null o scaduto per {} — richiedo aggiornamento via app", email);
+            return input.getResponseBuilder()
+                    .withSpeech("La traccia non è aggiornata. Apri l'app ebeat per aggiornarla, poi riprova.")
+                    .withShouldEndSession(true)
+                    .build();
         }
 
         long offset;
