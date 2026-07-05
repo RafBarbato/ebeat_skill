@@ -6,6 +6,7 @@ import com.amazon.ask.model.interfaces.audioplayer.PlayBehavior;
 import org.slf4j.Logger;
 import service.AccountService;
 import service.CurrentTrackService;
+import service.DeviceService;
 
 import java.util.Optional;
 
@@ -63,6 +64,17 @@ public final class PlaybackStarter {
                     .withSpeech("Errore nel riconoscere il tuo account. Riprova.")
                     .withShouldEndSession(true)
                     .build();
+        }
+
+        // Registra il device corrente nel registry alexa_device (punto #2:
+        // alimenta il menu "dispositivi" lato app). Best-effort: un errore qui
+        // non deve impedire la riproduzione.
+        try {
+            var device = input.getRequestEnvelope().getContext().getSystem().getDevice();
+            String deviceId = device != null ? device.getDeviceId() : null;
+            new DeviceService().registerDevice(email, deviceId);
+        } catch (Exception e) {
+            LOG.warn("Registrazione device fallita [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
         }
 
         Optional<CurrentTrack> maybeTrack = currentTrackService.findByUserId(email);

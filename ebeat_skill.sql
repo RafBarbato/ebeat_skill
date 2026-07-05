@@ -81,6 +81,31 @@ COMMENT ON TABLE playback_queue IS
 ALTER TABLE playback_queue ENABLE ROW LEVEL SECURITY;
 
 -- =====================================================================
+-- Registry dei device Alexa per utente.
+-- Popolata dalla skill ad ogni invocazione: upsert su (user_id, device_id)
+-- con device_id = System.device.deviceId. L'app la legge (via endpoint
+-- backend) per mostrare il menù "dispositivi" e scegliere il target.
+-- Il `name` è assegnato dall'utente lato app (NULL = nome di default in UI).
+-- device_id corrisponde a <id> in current_track.active_device = 'alexa:<deviceId>'.
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS alexa_device (
+  user_id       TEXT        NOT NULL,
+  device_id     TEXT        NOT NULL,
+  name          TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, device_id)
+);
+
+CREATE INDEX IF NOT EXISTS alexa_device_user_idx ON alexa_device(user_id);
+
+COMMENT ON TABLE alexa_device IS
+  'Registry device Alexa per utente. Upsert lato skill (System.device.deviceId); letto dall app per il menù dispositivi. device_id corrisponde a <id> in current_track.active_device = alexa:<deviceId>.';
+
+ALTER TABLE alexa_device ENABLE ROW LEVEL SECURITY;
+
+-- =====================================================================
 -- Supabase Realtime: l'app si subscriba a current_track per detect
 -- mutex device (caso 12) e a playback_queue per sync coda (caso 7).
 -- =====================================================================

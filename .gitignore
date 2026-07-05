@@ -4,3 +4,4 @@ target/
 *.jar
 dependency-reduced-pom.xml
 .env
+*.webm
