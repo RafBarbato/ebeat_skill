@@ -36,8 +36,12 @@ public class CancelAndStopIntentHandler implements IntentRequestHandler {
             try {
                 String email = accountService.resolveEmail(accessToken);
                 currentTrackService.setLoopMode(email, false);
+                // Stop terminale (la skill esce): rilascia il device attivo così
+                // l'app smette di riflettere "in riproduzione su Alexa". La pausa
+                // invece mantiene active_device per il resume (PauseIntentHandler).
+                currentTrackService.setPlaybackState(email, null, false);
             } catch (Exception e) {
-                LOG.warn("Disattivazione loop_mode fallita [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
+                LOG.warn("Reset stato stop fallito [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
             }
         }
 

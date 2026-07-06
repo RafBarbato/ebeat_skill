@@ -50,6 +50,23 @@ public class PlaybackStartedHandler implements RequestHandler {
         try {
             String email = accountService.resolveEmail(accessToken);
 
+            // Una traccia sta effettivamente suonando su Alexa: riafferma il
+            // device attivo e is_playing=true (il PlaybackStopped emesso dal
+            // REPLACE_ALL della traccia precedente lo aveva messo a false).
+            // Così l'app riflette correttamente "in riproduzione".
+            try {
+                var device = input.getRequestEnvelope().getContext().getSystem().getDevice();
+                String devId = device != null ? device.getDeviceId() : null;
+                if (devId != null) {
+                    currentTrackService.setPlaybackState(email, "alexa:" + devId, true);
+                } else {
+                    currentTrackService.setIsPlaying(email, true);
+                }
+            } catch (Exception e) {
+                LOG.warn("setPlaybackState (started) fallito [{}: {}]",
+                        e.getClass().getSimpleName(), e.getMessage());
+            }
+
             int queueCount = queueService.countByUserId(email);
             if (queueCount > REFILL_THRESHOLD) {
                 LOG.info("Queue count={}, oltre soglia ({}), nessun refill", queueCount, REFILL_THRESHOLD);
