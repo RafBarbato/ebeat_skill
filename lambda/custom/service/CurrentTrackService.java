@@ -49,6 +49,41 @@ public class CurrentTrackService {
                 .toBodilessEntity();
     }
 
+    /**
+     * Aggiorna lo stato di riproduzione su current_track (casi 11/12/14):
+     * device attivo (es. "alexa:&lt;deviceId&gt;", o null) e flag is_playing.
+     * Serve all'app per riflettere cosa/come sta suonando Alexa (Realtime).
+     */
+    public void setPlaybackState(String userId, String activeDevice, boolean isPlaying) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("active_device", activeDevice);
+        body.put("is_playing", isPlaying);
+        body.put("playback_state_changed_at", Instant.now().toString());
+        body.put("updated_at", Instant.now().toString());
+
+        client.patch()
+                .uri(trackUri + "?user_id=eq." + userId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    /** Aggiorna solo il flag is_playing (mantiene active_device). Pausa/stop. */
+    public void setIsPlaying(String userId, boolean isPlaying) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("is_playing", isPlaying);
+        body.put("playback_state_changed_at", Instant.now().toString());
+        body.put("updated_at", Instant.now().toString());
+
+        client.patch()
+                .uri(trackUri + "?user_id=eq." + userId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
     /** Attiva o disattiva la modalità loop per l'utente. */
     public void setLoopMode(String userId, boolean enabled) {
         Map<String, Object> body = new HashMap<>();

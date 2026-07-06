@@ -53,6 +53,22 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- RLS su current_track: le scritture passano da service_role (skill + BE, che
+-- bypassa RLS). Per il Realtime serve una policy di SELECT: l'app si subscriba a
+-- current_track per il refill coda sul next Alexa (caso 7/14). Policy USER-SCOPED:
+-- il client Supabase dell'app usa un JWT `authenticated` coniato dal BE
+-- (/v2/alexa/realtime-token) con claim `email`, e legge SOLO la propria riga.
+-- (Niente read anon ampia: ogni utente vede solo il proprio current_track.)
+ALTER TABLE current_track ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'current_track' AND policyname = 'current_track_read'
+  ) THEN
+    CREATE POLICY current_track_read ON current_track FOR SELECT TO authenticated
+      USING (user_id = auth.jwt() ->> 'email');
+  END IF;
+END $$;
+
 -- =====================================================================
 -- Coda tracce successive precaricate dall'app (caso 7).
 -- L'app riempie con N=3-5 righe; la skill, sullo skip o NearlyFinished,

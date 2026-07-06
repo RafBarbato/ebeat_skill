@@ -49,6 +49,8 @@ public class PlaybackStoppedHandler implements RequestHandler {
         try {
             String email = accountService.resolveEmail(accessToken);
             currentTrackService.updateOffset(email, offset);
+            // Pausa/stop su Alexa: l'app riflette lo stato "in pausa" via Realtime.
+            currentTrackService.setIsPlaying(email, false);
             LOG.info("Offset salvato per {}: {} ms", email, offset);
         } catch (Exception e) {
             LOG.error("Errore salvataggio offset [{}: {}]", e.getClass().getSimpleName(), e.getMessage());

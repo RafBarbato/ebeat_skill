@@ -144,6 +144,18 @@ public final class PlaybackStarter {
             speech = "Riproduco " + title + " di " + artist + " da ebeat.";
         }
 
+        // Segna che Alexa è il device attivo e sta suonando, così l'app può
+        // riflettere lo stato (traccia + play) via Realtime. Best-effort.
+        try {
+            var dev = input.getRequestEnvelope().getContext().getSystem().getDevice();
+            String devId = dev != null ? dev.getDeviceId() : null;
+            if (devId != null) {
+                currentTrackService.setPlaybackState(email, "alexa:" + devId, true);
+            }
+        } catch (Exception e) {
+            LOG.warn("setPlaybackState (play) fallito [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
+        }
+
         return input.getResponseBuilder()
                 .withSpeech(speech)
                 .addAudioPlayerPlayDirective(PlayBehavior.REPLACE_ALL, offset, "", "ebeat", track.getUrl())
