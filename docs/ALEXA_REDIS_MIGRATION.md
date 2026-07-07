@@ -1,0 +1,240 @@
+# Migrazione Alexa: da Supabase a Redis (BE-centrica)
+
+> Design della migrazione dello stato di riproduzione Alexa (`current_track`,
+> `playback_queue`, `alexa_device`) da **Supabase** a **Redis**, in vista della
+> **dismissione di Supabase**.
+> Branch: `feature/skill_alexa_redis` (beatly + ebeat_skill).
+> Stato: **DRAFT / design** — nessuna implementazione ancora.
+
+---
+
+## 1. Obiettivo e vincoli
+
+- **Rimuovere la dipendenza da Supabase** per lo stato di riproduzione Alexa.
+- Lo stato è **effimero**: la perdita al riavvio del BE è **accettabile** (l'app
+  lo ricostruisce). → Redis senza persistenza (o con TTL) va bene.
+- Restano invariati i vincoli di prodotto: **no storage bytes audio**, **no
+  chiamate YouTube da BE/skill** (solo l'app risolve), **single active player**.
+
+---
+
+## 2. Il problema: Supabase fa **tre** cose, non una
+
+Oggi Supabase non è "solo un DB". Fornisce tre servizi che vanno sostituiti
+**separatamente**:
+
+| # | Servizio Supabase | Chi lo usa | Sostituto Redis/BE |
+|---|---|---|---|
+| A | **Storage** tabellare (`current_track`, `playback_queue`, `alexa_device`) | Skill (diretto), BE (per l'app) | **Redis** (via BE) |
+| B | **Realtime** (push websocket con RLS) su `current_track` | App (reflection) | **WebSocket sul BE** + Redis Pub/Sub |
+| C | **Auth map** token→email (`AccountService.resolveEmail` via admin API) | Skill | **Endpoint BE** (il token OAuth è già emesso dal BE) |
+
+> ⚠️ Il punto critico è che oggi **la skill accede a Supabase DIRETTAMENTE**
+> (service key), senza passare dal BE. Nella migrazione **la skill dovrà passare
+> dal BE** → il BE diventa dipendenza runtime della skill. È un cambio di
+> topologia, non solo di storage.
+
+---
+
+## 3. Architettura target
+
+```mermaid
+flowchart LR
+    subgraph Alexa
+      AC[Alexa Cloud] --> SK[Skill Lambda]
+    end
+    subgraph beatly
+      SK -- REST /internal/alexa/* (service secret) --> BE[beatly/api]
+      APP[App] -- REST /v2/alexa/* (sessione utente) --> BE
+      APP <-. WebSocket (push) .-> BE
+      BE <--> R[(Redis)]
+      BE -- pub/sub --> R
+    end
+    APP -- InnerTube (IP residenziale) --> YT[YouTube]
+```
+
+Principi:
+- **Il BE è l'unico hub.** Skill e app parlano **solo col BE**.
+- **Redis** è la store effimera (dietro il BE; non esposto a skill/app).
+- Il **push live** all'app è un **WebSocket ospitato dal BE**; il fan-out tra
+  istanze BE avviene via **Redis Pub/Sub**.
+- La skill si autentica al BE con un **service secret** e passa l'**access_token
+  Alexa** (emesso dal BE stesso) per la risoluzione utente.
+
+---
+
+## 4. Modello dati Redis
+
+Chiavi namespaced per utente (email). TTL opzionale (es. 7–30 giorni) — è
+effimero.
+
+```
+current_track   →  STRING  alexa:ct:<email>         = JSON {url, url_expires_at,
+                                                        offset, track_id, title,
+                                                        artist, duration, youtube_id,
+                                                        loop_mode, active_device,
+                                                        is_playing, state_changed_at,
+                                                        radio_seed_track_id, updated_at}
+playback_queue  →  ZSET    alexa:pq:<email>         score=position, member=JSON item
+                   (oppure HASH position→JSON; ZSET dà range/ordinamento nativi)
+alexa_device    →  HASH    alexa:dev:<email>        field=deviceId, value=JSON {name,
+                                                        created_at, last_seen_at}
+pub/sub channel →  PUBLISH alexa:events:<email>     = JSON {type:'current_track', ...}
+```
+
+Note:
+- `current_track` come singola STRING JSON: UPSERT = `SET`. Semplice, atomico.
+  Per update parziali (solo offset) si può usare HASH + `HSET`, ma JSON singolo
+  è più semplice e coerente col contratto attuale.
+- `playback_queue` come **ZSET** (`ZADD` per posizione, `ZRANGE` per leggere in
+  ordine, `ZPOPMIN`/`ZREM` per consumare, replace atomico con `MULTI`/pipeline).
+- Ogni scrittura che cambia `current_track` fa anche `PUBLISH` sul canale utente.
+
+---
+
+## 5. API BE
+
+### 5.1 Endpoint per l'**app** (`/v2/alexa/*`) — già esistenti, invariati
+`PUT/GET current-track`, `PUT active-device`, `PUT queue`, `GET/PATCH/DELETE devices`.
+Cambia **solo l'implementazione del repository** (Redis invece di Supabase SQL).
+Il `GET realtime-token` **sparisce** (non serve più il JWT Supabase).
+
+### 5.2 Endpoint per la **skill** (`/internal/alexa/*`) — nuovi
+Coprono le operazioni che oggi la skill fa in diretta su Supabase. Auth:
+header `X-Skill-Secret` + `accessToken` Alexa nel body (il BE risolve l'email).
+
+| Metodo | Endpoint | Sostituisce (skill) |
+|---|---|---|
+| POST | `/internal/alexa/resolve-email` | `AccountService.resolveEmail` |
+| GET | `/internal/alexa/current-track` | `CurrentTrackService.findByUserId` |
+| PATCH | `/internal/alexa/current-track` | `updateOffset`, `setPlaybackState`, `setIsPlaying`, `setLoopMode` |
+| POST | `/internal/alexa/promote-next` | `promoteFromQueue` + `queue.delete` + reload |
+| GET | `/internal/alexa/queue/next` | `PlaybackQueueService.findNext` |
+| GET | `/internal/alexa/queue/count` | `countByUserId` |
+| POST | `/internal/alexa/devices` | `DeviceService.registerDevice` |
+
+> Alternativa: un unico endpoint "op" con `action` — ma endpoint espliciti sono
+> più leggibili/testabili. Ogni scrittura pubblica l'evento realtime.
+
+### 5.3 Realtime (nuovo)
+`WS /v2/alexa/stream` (o SSE `GET /v2/alexa/events`): l'app si connette con il
+suo **JWT di sessione BE** (già esistente, non Supabase); il BE la iscrive al
+canale `alexa:events:<email>`. Ad ogni `PUBLISH`, il BE inoltra il messaggio ai
+client connessi di quell'utente (fan-out multi-istanza via Redis Pub/Sub).
+
+---
+
+## 6. Realtime: WebSocket vs SSE
+
+| | WebSocket | SSE |
+|---|---|---|
+| Direzione | bidirezionale | server→client |
+| Fit col caso | ok (all'app basta ricevere) | **ideale** (solo ricezione) |
+| Reconnect | manuale | automatico (nativo) |
+| Infra | server ws + Redis pub/sub | endpoint HTTP long-lived + Redis pub/sub |
+
+**Raccomandazione: WebSocket** (rispecchia ciò che l'app già faceva con Supabase
+Realtime, riuso del pattern lato client). SSE è un'alternativa più semplice se il
+BE è dietro un proxy che gestisce bene le connessioni long-lived. Da decidere in
+base all'infra di deploy (Cloud Run: ok entrambi, attenzione ai timeout idle).
+
+Comportamento background invariato: il socket si sospende in background → resta
+il **re-check al foreground** (`GET /v2/alexa/current-track`).
+
+---
+
+## 7. Auth
+
+- **App → BE (REST + WS)**: JWT di sessione BE **già esistente** (`v2Authed`).
+  Elimina il minting del JWT Supabase (`/realtime-token`).
+- **Skill → BE**: `X-Skill-Secret` condiviso (env `SKILL_BE_SECRET` su Lambda +
+  BE). La skill passa l'`accessToken` Alexa; il BE lo valida (è un token che il
+  BE stesso ha emesso in `/alexa/oauth/token`) e ne ricava l'email. → **elimina
+  la dipendenza da Supabase admin API** per la risoluzione utente.
+
+---
+
+## 8. Piano a fasi (rollout sicuro con feature-flag)
+
+Per non rompere il sistema funzionante, si introduce un **flag di backend**
+(`ALEXA_STORE_BACKEND = supabase | redis`) dietro un'**interfaccia repository**
+comune.
+
+- **Fase 1 — BE: repository Redis.** `IAlexaStore` con due implementazioni
+  (`SupabaseAlexaStore` esistente, `RedisAlexaStore` nuova). Gli endpoint app
+  non cambiano contratto. Test unit/integration su Redis.
+- **Fase 2 — BE: realtime push.** WebSocket + Redis Pub/Sub. Ogni write pubblica.
+- **Fase 3 — Skill → BE.** Nuovo `BackendAlexaClient` nella skill che chiama
+  `/internal/alexa/*`; i `*Service` della skill diventano wrapper del client.
+  Aggiunta `SKILL_BE_SECRET`. Endpoint `/internal/alexa/*` nel BE.
+- **Fase 4 — App → BE realtime.** `alexaCurrentTrackWatcher` sostituisce la
+  subscription Supabase con il client WS del BE. Rimozione `getRealtimeToken`.
+- **Fase 5 — Auth map.** `resolveEmail` via BE invece di Supabase admin.
+- **Fase 6 — Cutover + cleanup.** `ALEXA_STORE_BACKEND=redis` in prod; rimozione
+  `SupabaseAlexaStore`, `ebeat_skill.sql` (parte Alexa), env Supabase Alexa,
+  JWT-Supabase minting. Aggiornare `ALEXA_INTEGRATION_SPEC.md`.
+
+Ordine consigliato: **1 → 2 → (3 ∥ 4) → 5 → 6**. Fasi 1–2 sono retro-compatibili
+(l'app/skill continuano su Supabase finché non si spostano in 3–4).
+
+---
+
+## 9. Rischi e mitigazioni
+
+| Rischio | Mitigazione |
+|---|---|
+| BE diventa SPOF per la riproduzione Alexa (oggi la skill è BE-independent) | HA del BE; retry/backoff nel client skill; degradazione: se BE giù, la skill risponde "riprova" |
+| WebSocket/idle timeout su proxy (Cloud Run) | keep-alive/ping; reconnessione; fallback su polling `GET current-track` |
+| Fan-out multi-istanza | Redis Pub/Sub (ogni istanza inoltra ai propri client) |
+| Perdita stato al riavvio Redis/BE | accettata; l'app ripopola al primo play; TTL per igiene |
+| Sicurezza `/internal/alexa/*` | secret forte + validazione access_token; rete interna se possibile |
+| Doppio backend durante transizione | feature-flag per ambiente; evitare dual-write (fonte unica di verità) |
+
+---
+
+## 10. Impatto sui file (stima)
+
+**BE (beatly/api)**
+- `services/alexa/IAlexaStore.ts` (interfaccia) + `RedisAlexaStore.ts` +
+  `SupabaseAlexaStore.ts` (refactor dell'attuale repo).
+- `controllers/InternalAlexa.controller.ts` + `routes/internal/Alexa.routes.ts`.
+- Realtime: `services/realtime/AlexaWsServer.ts` + Redis Pub/Sub.
+- Rimozione (fase 6): `realtimeToken`, minting JWT Supabase.
+
+**Skill (ebeat_skill)**
+- `util/BackendAlexaClient.java` (HTTP verso `/internal/alexa/*`, header secret).
+- Refactor `CurrentTrackService`, `PlaybackQueueService`, `DeviceService`,
+  `AccountService` → delega al client.
+- `SupabaseRestClient` → rimosso in fase 6. Nuove env: `BACKEND_BASE_URL`,
+  `SKILL_BE_SECRET`.
+
+**App (beatly/app)**
+- `services/alexaCurrentTrackWatcher.ts` → client WS del BE al posto di
+  Supabase Realtime.
+- `api/ebeat/alexa/getRealtimeToken.ts` → rimosso.
+- `libs/supabase` per l'Alexa realtime → rimosso (se Supabase non usato altrove).
+
+---
+
+## 11. Decisioni aperte (da confermare prima dell'implementazione)
+
+1. **Realtime**: WebSocket (consigliato) o SSE? Dipende dall'infra di deploy.
+2. **Supabase AUTH** viene rimossa anch'essa, o solo DB/Realtime? Impatta la
+   fase 5 (token→email) e l'OAuth account-linking.
+3. **`playback_queue`**: ZSET (consigliato) o HASH?
+4. **Feature-flag vs cutover netto** per ambiente: si vuole la coesistenza dei
+   due backend o si taglia direttamente su Redis in staging?
+5. **HA del BE**: c'è già? (necessaria, visto che diventa SPOF per Alexa).
+6. Redis: standalone o cluster? Persistenza (RDB/AOF) o puramente in-memory?
+
+---
+
+## 12. Prossimo passo
+
+Confermate le decisioni §11, si parte dalla **Fase 1** (interfaccia `IAlexaStore`
++ `RedisAlexaStore` nel BE, dietro feature-flag), che è retro-compatibile e non
+tocca skill/app.
+
+---
+
+*Draft — da iterare.*
