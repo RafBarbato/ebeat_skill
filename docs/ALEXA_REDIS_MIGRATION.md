@@ -133,13 +133,20 @@ client connessi di quell'utente (fan-out multi-istanza via Redis Pub/Sub).
 | Reconnect | manuale | automatico (nativo) |
 | Infra | server ws + Redis pub/sub | endpoint HTTP long-lived + Redis pub/sub |
 
-**Raccomandazione: WebSocket** (rispecchia ciò che l'app già faceva con Supabase
-Realtime, riuso del pattern lato client). SSE è un'alternativa più semplice se il
-BE è dietro un proxy che gestisce bene le connessioni long-lived. Da decidere in
-base all'infra di deploy (Cloud Run: ok entrambi, attenzione ai timeout idle).
+**DECISO: SSE.** La skill invia soltanto (non ascolta), l'app deve solo
+ricevere → SSE è il fit naturale (reconnessione nativa, più semplice del ws).
+Lato app: libreria **`react-native-sse`** (RN non ha `EventSource` nativo),
+con header per il JWT di sessione BE. Alla (ri)connessione il BE invia subito
+uno **snapshot di `current_track`** come primo evento → sync garantito.
 
-Comportamento background invariato: il socket si sospende in background → resta
-il **re-check al foreground** (`GET /v2/alexa/current-track`).
+Igiene lato BE: `Content-Type: text/event-stream`, `X-Accel-Buffering: no`
+(no buffering proxy), keep-alive periodico (`:ping`), fan-out multi-istanza via
+**Redis Pub/Sub** con **connessione dedicata al SUBSCRIBE**. Se l'infra taglia le
+connessioni long-lived (es. Cloud Run), il client riconnette e riceve di nuovo lo
+snapshot.
+
+Comportamento background invariato: la connessione si sospende in background →
+resta il **re-check al foreground** (`GET /v2/alexa/current-track`).
 
 ---
 
@@ -216,16 +223,21 @@ Ordine consigliato: **1 → 2 → (3 ∥ 4) → 5 → 6**. Fasi 1–2 sono retro
 
 ---
 
-## 11. Decisioni aperte (da confermare prima dell'implementazione)
+## 11. Decisioni
 
-1. **Realtime**: WebSocket (consigliato) o SSE? Dipende dall'infra di deploy.
-2. **Supabase AUTH** viene rimossa anch'essa, o solo DB/Realtime? Impatta la
-   fase 5 (token→email) e l'OAuth account-linking.
-3. **`playback_queue`**: ZSET (consigliato) o HASH?
-4. **Feature-flag vs cutover netto** per ambiente: si vuole la coesistenza dei
-   due backend o si taglia direttamente su Redis in staging?
-5. **HA del BE**: c'è già? (necessaria, visto che diventa SPOF per Alexa).
-6. Redis: standalone o cluster? Persistenza (RDB/AOF) o puramente in-memory?
+**Prese** (2026-07-07):
+1. **Realtime = SSE** (§6). La skill solo invia, l'app solo riceve.
+2. **Supabase AUTH resta per ora** — si migra **solo storage + realtime**. Quindi
+   la **Fase 5 (auth map) è rinviata**: `AccountService.resolveEmail` continua via
+   Supabase admin finché non si toglie anche l'auth. OAuth account-linking
+   invariato.
+3. **HA del BE**: non è un problema per ora → SPOF accettato in questa fase
+   (retry/backoff lato skill comunque consigliati).
+
+**Ancora da confermare** (minori, non bloccanti per la Fase 1):
+4. **`playback_queue`**: ZSET (consigliato) o HASH?
+5. **Feature-flag vs cutover netto** per ambiente.
+6. Redis: standalone o cluster? Persistenza (RDB/AOF) o in-memory?
 
 ---
 
