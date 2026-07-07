@@ -29,7 +29,9 @@ echo  Build OK. Carica questo jar sulla Lambda della skill:
 echo    %~dp0target\ebeat-1.0.jar
 echo.
 echo  Ricorda le env var sulla Lambda:
-echo    SUPABASE_DB_TRACK_URI, SUPABASE_SERVICE_KEY,
+echo    SKILL_BE_INTERNAL_URL  (es. https://host/v1/internal/alexa)
+echo    SKILL_BE_SECRET        (bearer condiviso col BE)
+echo    SUPABASE_DB_TRACK_URI, SUPABASE_SERVICE_KEY  (solo AccountService)
 echo    BACKEND_REFRESH_URL, USER_EMAIL
 echo ============================================================
 endlocal

@@ -1,11 +1,14 @@
 package util;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.sql.Timestamp;
 
 /**
  * POJO per una riga di playback_queue (caso 7).
  * Ordinata per position; position=1 è la prossima dopo current_track.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class QueueItem {
 
     String user_id;

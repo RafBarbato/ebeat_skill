@@ -1,7 +1,12 @@
 package util;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.sql.Timestamp;
 
+// Il BE (full row) può includere campi non mappati qui (active_device,
+// is_playing, ...) → ignora le proprietà sconosciute invece di fallire.
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class CurrentTrack {
 
     Integer id;

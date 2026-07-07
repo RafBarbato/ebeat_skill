@@ -4,7 +4,10 @@
 > `playback_queue`, `alexa_device`) da **Supabase** a **Redis**, in vista della
 > **dismissione di Supabase**.
 > Branch: `feature/skill_alexa_redis` (beatly + ebeat_skill).
-> Stato: **DRAFT / design** — nessuna implementazione ancora.
+> Stato: **IN CORSO** — Fasi 1–3 implementate (BE + skill, branch
+> `feature/skill_alexa_redis`). Retro-compatibili: flag default `supabase`, la
+> skill parla al BE ma il BE resta su Supabase finché non si flippa il flag +
+> Fase 4 (app SSE). Fasi 4–6 da fare.
 
 ---
 
@@ -167,13 +170,35 @@ Per non rompere il sistema funzionante, si introduce un **flag di backend**
 (`ALEXA_STORE_BACKEND = supabase | redis`) dietro un'**interfaccia repository**
 comune.
 
-- **Fase 1 — BE: repository Redis.** `IAlexaStore` con due implementazioni
-  (`SupabaseAlexaStore` esistente, `RedisAlexaStore` nuova). Gli endpoint app
-  non cambiano contratto. Test unit/integration su Redis.
-- **Fase 2 — BE: realtime push.** WebSocket + Redis Pub/Sub. Ogni write pubblica.
-- **Fase 3 — Skill → BE.** Nuovo `BackendAlexaClient` nella skill che chiama
-  `/internal/alexa/*`; i `*Service` della skill diventano wrapper del client.
-  Aggiunta `SKILL_BE_SECRET`. Endpoint `/internal/alexa/*` nel BE.
+- **Fase 1 — BE: repository Redis. ✅ FATTA.** Interfaccia comune
+  `IAlexaDeviceRepository` con due implementazioni (`AlexaDeviceRepository`
+  Supabase esistente, `RedisAlexaStore` nuova: HASH `alexa:ct:<email>` +
+  ZSET `alexa:pq:<email>` + HASH `alexa:dev:<email>`, TTL 30gg). Flag
+  `ALEXA_STORE_BACKEND` in `#config`, binding condizionale nel di-container.
+  Gli endpoint app non cambiano contratto. Typecheck + smoke test Redis OK.
+- **Fase 2 — BE: realtime push. ✅ FATTA.** **SSE** (non WebSocket, vedi §6/§11)
+  + Redis Pub/Sub. `AlexaEventHub`: canale globale `alexa:evt` (email nel
+  payload), una sola connessione subscriber per processo, fan-out sulle
+  response SSE per email. Publish best-effort in `AlexaService` a ogni
+  `upsertCurrentTrack` / `setActiveDevice` / `replacePlaybackQueue`. Nuovo
+  endpoint `GET /v2/alexa/events` (prime dello stato + heartbeat 25s). Il
+  layer di notifica è **disaccoppiato dallo storage**: funziona anche con
+  backend Supabase, così l'app può migrare a SSE prima del cutover dati.
+- **Fase 3 — Skill → BE. ✅ FATTA.** `BackendAlexaClient` (Bearer
+  `SKILL_BE_SECRET`, base `SKILL_BE_INTERNAL_URL`). `CurrentTrackService`,
+  `PlaybackQueueService`, `DeviceService` riscritti: chiamano
+  `/v1/internal/alexa/*` invece di Supabase, firme pubbliche invariate (handler
+  non toccati). Un solo endpoint patch generico `POST /current-track/patch`
+  ({email, patch} snake_case, present=set/null=NULL/assente=invariato) copre
+  updateOffset/setPlaybackState/setIsPlaying/setLoopMode/promoteFromQueue/
+  promoteFromSearch. BE: `IAlexaDeviceRepository` esteso (getFullCurrentTrack,
+  patchCurrentTrack, findNextQueueItem, countQueue, deleteQueueItem,
+  registerDevice) su Redis+Supabase; `AlexaInternalController` +
+  `internal-alexa-auth.middleware` (secret fail-closed). Le mutazioni skill
+  ripubblicano su SSE → la reflection app resta allineata. POJO CurrentTrack/
+  QueueItem: `@JsonIgnoreProperties(ignoreUnknown=true)`. `AccountService`
+  resta su Supabase admin (resolveEmail → Fase 5). Typecheck BE + build skill
+  (jar) + smoke test curl (backend Redis) OK.
 - **Fase 4 — App → BE realtime.** `alexaCurrentTrackWatcher` sostituisce la
   subscription Supabase con il client WS del BE. Rimozione `getRealtimeToken`.
 - **Fase 5 — Auth map.** `resolveEmail` via BE invece di Supabase admin.
