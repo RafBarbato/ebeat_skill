@@ -4,10 +4,10 @@
 > `playback_queue`, `alexa_device`) da **Supabase** a **Redis**, in vista della
 > **dismissione di Supabase**.
 > Branch: `feature/skill_alexa_redis` (beatly + ebeat_skill).
-> Stato: **IN CORSO** — Fasi 1–3 implementate (BE + skill, branch
-> `feature/skill_alexa_redis`). Retro-compatibili: flag default `supabase`, la
-> skill parla al BE ma il BE resta su Supabase finché non si flippa il flag +
-> Fase 4 (app SSE). Fasi 4–6 da fare.
+> Stato: **IN CORSO** — Fasi 1–4 implementate (BE + skill + app, branch
+> `feature/skill_alexa_redis`). Retro-compatibili: flag BE default `supabase`.
+> Skill e app parlano entrambe al BE; l'app riceve i realtime via SSE. Restano
+> Fase 5 (resolveEmail via BE) e Fase 6 (cutover flag→redis + cleanup Supabase).
 
 ---
 
@@ -199,8 +199,16 @@ comune.
   QueueItem: `@JsonIgnoreProperties(ignoreUnknown=true)`. `AccountService`
   resta su Supabase admin (resolveEmail → Fase 5). Typecheck BE + build skill
   (jar) + smoke test curl (backend Redis) OK.
-- **Fase 4 — App → BE realtime.** `alexaCurrentTrackWatcher` sostituisce la
-  subscription Supabase con il client WS del BE. Rimozione `getRealtimeToken`.
+- **Fase 4 — App → BE realtime. ✅ FATTA.** `alexaCurrentTrackWatcher`
+  sostituisce la subscription Supabase Realtime con un **client SSE minimale su
+  XMLHttpRequest** (nessuna dipendenza nuova, nessun rebuild nativo) verso
+  `GET /v2/alexa/events`. Header v2 firmati (HMAC+fingerprint+JWT via
+  `signRequest`/`getValidToken`) **rigenerati a ogni riconnessione** (finestra
+  replay ±5min). Riconnessione automatica su close/error + catch-up
+  `checkAlexaStateNow` al foreground. `applyAlexaState`/land-on-stop invariati.
+  `getRealtimeToken`/`SUPABASE.channel` rimossi dal watcher (file
+  `getRealtimeToken.ts` e endpoint `/realtime-token` restano come legacy →
+  cleanup Fase 6). tsc + eslint puliti.
 - **Fase 5 — Auth map.** `resolveEmail` via BE invece di Supabase admin.
 - **Fase 6 — Cutover + cleanup.** `ALEXA_STORE_BACKEND=redis` in prod; rimozione
   `SupabaseAlexaStore`, `ebeat_skill.sql` (parte Alexa), env Supabase Alexa,
