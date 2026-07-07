@@ -114,7 +114,11 @@ public class NextIntentHandler implements IntentRequestHandler {
 
             // Skip silenzioso: directive Play senza speech, l'utente sente
             // direttamente la nuova traccia partire.
-            String newToken = NEXT_TOKEN_PREFIX + System.currentTimeMillis();
+            // Token = youtube_id (vedi PlaybackStoppedHandler: distingue lo stop
+            // reale della corrente dal PlaybackStopped della traccia superata).
+            String newToken = newTrack.getYoutube_id() != null
+                    ? newTrack.getYoutube_id()
+                    : NEXT_TOKEN_PREFIX + System.currentTimeMillis();
             return handlerInput.getResponseBuilder()
                     .addAudioPlayerPlayDirective(
                             PlayBehavior.REPLACE_ALL, 0L, "", newToken, newTrack.getUrl())

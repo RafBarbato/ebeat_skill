@@ -7,6 +7,7 @@ import com.amazon.ask.model.interfaces.audioplayer.PlaybackStoppedRequest;
 import org.slf4j.Logger;
 import service.AccountService;
 import service.CurrentTrackService;
+import util.CurrentTrack;
 
 import java.util.Optional;
 
@@ -32,7 +33,8 @@ public class PlaybackStoppedHandler implements RequestHandler {
     public Optional<Response> handle(HandlerInput input) {
         PlaybackStoppedRequest req = (PlaybackStoppedRequest) input.getRequest();
         Long offset = req.getOffsetInMilliseconds();
-        LOG.info("PlaybackStoppedHandler invocato [offset={}]", offset);
+        String stoppedToken = req.getToken();
+        LOG.info("PlaybackStoppedHandler invocato [offset={}, token={}]", offset, stoppedToken);
         String accessToken = input.getRequestEnvelope().getContext().getSystem().getUser().getAccessToken();
 
         if (offset == null || accessToken == null) {
@@ -41,19 +43,39 @@ public class PlaybackStoppedHandler implements RequestHandler {
             return input.getResponseBuilder().build();
         }
 
-        if (offset == 0L) {
-            LOG.info("PlaybackStopped con offset=0 ignorato (probabile failure o stop a stream non avviato)");
-            return input.getResponseBuilder().build();
-        }
-
         try {
             String email = accountService.resolveEmail(accessToken);
-            currentTrackService.updateOffset(email, offset);
-            // Pausa/stop su Alexa: l'app riflette lo stato "in pausa" via Realtime.
-            currentTrackService.setIsPlaying(email, false);
-            LOG.info("Offset salvato per {}: {} ms", email, offset);
+
+            // Il token della directive è lo youtube_id della traccia. Se il token
+            // di QUESTO PlaybackStopped NON coincide con lo youtube_id corrente,
+            // vuol dire che si è fermata una traccia GIÀ SUPERATA da un cambio
+            // traccia (REPLACE_ALL: promoteFromQueue ha già messo la nuova in
+            // current_track): non toccare nulla, ci pensa il PlaybackStarted della
+            // nuova. Confronto per identità → immune alla corsa Stopped/Started
+            // (evita anche di scrivere l'offset della vecchia sulla nuova traccia).
+            Optional<CurrentTrack> cur = currentTrackService.findByUserId(email);
+            String currentYid = cur.map(CurrentTrack::getYoutube_id).orElse(null);
+            if (stoppedToken != null && currentYid != null && !stoppedToken.equals(currentYid)) {
+                LOG.info("PlaybackStopped di traccia superata (token={} != current={}): skip",
+                        stoppedToken, currentYid);
+                return input.getResponseBuilder().build();
+            }
+
+            // Stop/pausa REALE della traccia corrente.
+            // Offset solo se > 0 (offset=0 = probabile failure / stop a stream non
+            // avviato: non sovrascrivere il punto di ripresa).
+            if (offset > 0L) {
+                currentTrackService.updateOffset(email, offset);
+                LOG.info("Offset salvato per {}: {} ms", email, offset);
+            } else {
+                LOG.info("PlaybackStopped con offset=0: salto updateOffset");
+            }
+            // Rilascia il device: l'app riflette "su Alexa" SOLO mentre suona.
+            // "Alexa stop" sull'audio in background arriva come PlaybackStopped
+            // (non come StopIntent), quindi il rilascio va fatto qui.
+            currentTrackService.setPlaybackState(email, null, false);
         } catch (Exception e) {
-            LOG.error("Errore salvataggio offset [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
+            LOG.error("Errore stato PlaybackStopped [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
         }
 
         return input.getResponseBuilder().build();

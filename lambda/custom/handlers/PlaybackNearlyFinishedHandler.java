@@ -89,7 +89,10 @@ public class PlaybackNearlyFinishedHandler implements RequestHandler {
             LOG.warn("Loop interrotto: URL null/scaduto, app deve aggiornare");
             return input.getResponseBuilder().build();
         }
-        String newToken = LOOP_TOKEN_PREFIX + System.currentTimeMillis();
+        // Token = youtube_id (loop = stessa traccia). Vedi PlaybackStoppedHandler.
+        String newToken = track.getYoutube_id() != null
+                ? track.getYoutube_id()
+                : LOOP_TOKEN_PREFIX + System.currentTimeMillis();
         LOG.info("Loop attivo: riaccodo traccia per {} [currentToken={}, newToken={}]",
                 email, currentToken, newToken);
         return input.getResponseBuilder()
@@ -142,7 +145,10 @@ public class PlaybackNearlyFinishedHandler implements RequestHandler {
             return input.getResponseBuilder().build();
         }
 
-        String newToken = QUEUE_TOKEN_PREFIX + System.currentTimeMillis();
+        // Token = youtube_id della traccia promossa. Vedi PlaybackStoppedHandler.
+        String newToken = newTrack.getYoutube_id() != null
+                ? newTrack.getYoutube_id()
+                : QUEUE_TOKEN_PREFIX + System.currentTimeMillis();
         LOG.info("Enqueue prossima traccia [currentToken={}, newToken={}, title={}]",
                 currentToken, newToken, newTrack.getTrack_title());
         return input.getResponseBuilder()

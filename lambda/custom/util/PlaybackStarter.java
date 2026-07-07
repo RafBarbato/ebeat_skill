@@ -158,7 +158,12 @@ public final class PlaybackStarter {
 
         return input.getResponseBuilder()
                 .withSpeech(speech)
-                .addAudioPlayerPlayDirective(PlayBehavior.REPLACE_ALL, offset, "", "ebeat", track.getUrl())
+                // Token = youtube_id della traccia: PlaybackStoppedHandler lo usa
+                // per capire se a fermarsi è la traccia corrente (stop reale) o una
+                // vecchia superata da un cambio traccia. Immune alla corsa Stopped/Started.
+                .addAudioPlayerPlayDirective(PlayBehavior.REPLACE_ALL, offset, "",
+                        track.getYoutube_id() != null ? track.getYoutube_id() : "ebeat",
+                        track.getUrl())
                 .withShouldEndSession(true)
                 .build();
     }
