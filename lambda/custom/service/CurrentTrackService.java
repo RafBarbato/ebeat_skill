@@ -7,6 +7,7 @@ import util.CurrentTrack;
 import util.DeezerTrack;
 import util.QueueItem;
 
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -49,8 +50,10 @@ public class CurrentTrackService {
 
     /** Recupera la traccia corrente associata all'utente. */
     public Optional<CurrentTrack> findByUserId(String userId) {
+        // URI (non String): RestClient tratterebbe la String come template e
+        // ri-codificherebbe il %40 già prodotto da enc() → doppia codifica.
         CurrentTrack body = client.get()
-                .uri(base + "/current-track?email=" + enc(userId))
+                .uri(URI.create(base + "/current-track?email=" + enc(userId)))
                 .retrieve()
                 .body(CurrentTrack.class); // null su 204 No Content
         return Optional.ofNullable(body);

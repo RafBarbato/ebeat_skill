@@ -5,6 +5,7 @@ import org.springframework.web.client.RestClient;
 import util.BackendAlexaClient;
 import util.QueueItem;
 
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -32,8 +33,9 @@ public class PlaybackQueueService {
 
     /** Ritorna la prossima riga in coda (position minima) per l'utente. */
     public Optional<QueueItem> findNext(String userId) {
+        // URI (non String) per evitare la doppia codifica del template RestClient.
         QueueItem body = client.get()
-                .uri(base + "/queue/next?email=" + enc(userId))
+                .uri(URI.create(base + "/queue/next?email=" + enc(userId)))
                 .retrieve()
                 .body(QueueItem.class); // null su 204 No Content
         return Optional.ofNullable(body);
@@ -45,7 +47,7 @@ public class PlaybackQueueService {
      */
     public int countByUserId(String userId) {
         Map<?, ?> body = client.get()
-                .uri(base + "/queue/count?email=" + enc(userId))
+                .uri(URI.create(base + "/queue/count?email=" + enc(userId)))
                 .retrieve()
                 .body(Map.class);
 
