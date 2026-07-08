@@ -3,6 +3,17 @@
 -- Eseguibile in modo idempotente (IF NOT EXISTS / DO $$ guard).
 -- AGGIORNARE QUESTO FILE OGNI VOLTA che si modifica lo schema DB.
 -- =====================================================================
+--
+-- ⚠️  DEPRECATO dal cutover a Redis (Fase 6 — vedi docs/ALEXA_REDIS_MIGRATION.md).
+--     Lo stato Alexa (current_track / playback_queue / alexa_device) è ora
+--     gestito su REDIS dal BE (RedisAlexaStore). Queste tabelle, le RLS e la
+--     publication Realtime NON sono più lette/scritte dal codice:
+--       - la skill scrive/legge via /v1/internal/alexa/* (BE → Redis);
+--       - l'app riceve i realtime via SSE /v2/alexa/events (non più Realtime);
+--       - /v2/alexa/realtime-token è stato rimosso.
+--     Conservate solo per riferimento/rollback. Rimozione (DROP) = azione ops
+--     manuale e irreversibile, non inclusa qui. Non estendere questo schema.
+-- =====================================================================
 
 -- Rinomina tabella urls -> current_track (solo se urls esiste ancora)
 DO $$ BEGIN
@@ -43,6 +54,9 @@ COMMENT ON COLUMN current_track.is_playing IS
   'true=playing, false=paused/stopped (casi 11/12).';
 COMMENT ON COLUMN current_track.playback_state_changed_at IS
   'Timestamp ultimo cambio di active_device o is_playing.';
+
+COMMENT ON TABLE current_track IS
+  'DEPRECATO (cutover Redis, Fase 6): stato ora su Redis alexa:ct:<email>. Non letta/scritta dal codice. Solo riferimento/rollback.';
 
 -- Constraint univoco su user_id (necessario per upsert merge-duplicates)
 DO $$ BEGIN
@@ -92,7 +106,7 @@ CREATE TABLE IF NOT EXISTS playback_queue (
 CREATE INDEX IF NOT EXISTS playback_queue_user_idx ON playback_queue(user_id);
 
 COMMENT ON TABLE playback_queue IS
-  'Coda tracce successive precaricate dall app (caso 7). position=1 e la prossima dopo current_track.';
+  'DEPRECATO (cutover Redis, Fase 6): coda ora su Redis ZSET alexa:pq:<email>. Non letta/scritta dal codice. Solo riferimento/rollback.';
 
 ALTER TABLE playback_queue ENABLE ROW LEVEL SECURITY;
 
@@ -117,7 +131,7 @@ CREATE TABLE IF NOT EXISTS alexa_device (
 CREATE INDEX IF NOT EXISTS alexa_device_user_idx ON alexa_device(user_id);
 
 COMMENT ON TABLE alexa_device IS
-  'Registry device Alexa per utente. Upsert lato skill (System.device.deviceId); letto dall app per il menù dispositivi. device_id corrisponde a <id> in current_track.active_device = alexa:<deviceId>.';
+  'DEPRECATO (cutover Redis, Fase 6): registry ora su Redis HASH alexa:dev:<email>. Non letta/scritta dal codice. Solo riferimento/rollback.';
 
 ALTER TABLE alexa_device ENABLE ROW LEVEL SECURITY;
 
