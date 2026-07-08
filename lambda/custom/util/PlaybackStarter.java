@@ -77,7 +77,21 @@ public final class PlaybackStarter {
             LOG.warn("Registrazione device fallita [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
         }
 
-        Optional<CurrentTrack> maybeTrack = currentTrackService.findByUserId(email);
+        // La skill ora dipende dal BE (endpoint interni). Se è irraggiungibile
+        // o mal configurato (es. SKILL_BE_INTERNAL_URL errata), degradiamo con un
+        // messaggio vocale invece di propagare un 500 — distinto da "nessuna
+        // traccia" (che è invece il caso di store vuoto, gestito sotto).
+        Optional<CurrentTrack> maybeTrack;
+        try {
+            maybeTrack = currentTrackService.findByUserId(email);
+        } catch (Exception e) {
+            LOG.error("BE irraggiungibile (findByUserId) [{}: {}]",
+                    e.getClass().getSimpleName(), e.getMessage());
+            return input.getResponseBuilder()
+                    .withSpeech("Al momento non riesco a raggiungere ebeat. Riprova tra poco.")
+                    .withShouldEndSession(true)
+                    .build();
+        }
         if (!maybeTrack.isPresent()) {
             return input.getResponseBuilder()
                     .withSpeech("Nessuna traccia trovata su ebeat. Avvia la riproduzione dall'app.")

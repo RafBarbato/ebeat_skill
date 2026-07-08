@@ -26,7 +26,20 @@ public class GenericExceptionHandler implements ExceptionHandler {
                 throwable.getClass().getName(),
                 throwable.getMessage(),
                 throwable);
-        final String speechText = "Si è verificato un errore. Riprova tra poco.";
+
+        // Eventi AudioPlayer / PlaybackController: nessuna sessione vocale attiva.
+        // Un errore qui (es. BE irraggiungibile durante un PlaybackNearlyFinished)
+        // NON deve produrre uno speech: risposta vuota → la riproduzione finisce in
+        // silenzio, coerente col vincolo di progetto. Mai un errore vocale su un
+        // evento di background (importante anche per la certificazione).
+        if (requestType != null
+                && (requestType.startsWith("AudioPlayer.")
+                        || requestType.startsWith("PlaybackController."))) {
+            return input.getResponseBuilder().build();
+        }
+
+        // Richieste vocali (Launch/Intent): messaggio cortese + chiusura pulita.
+        final String speechText = "Si è verificato un problema con ebeat. Riprova tra poco.";
         return input.getResponseBuilder()
                 .withSpeech(speechText)
                 .withShouldEndSession(true)

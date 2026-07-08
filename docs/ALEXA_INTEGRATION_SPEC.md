@@ -522,14 +522,30 @@ quota `"offset"`). `replacePlaybackQueue` è **atomico** (una sola istruzione).
 
 ### 11.3 Skill (Lambda, Java)
 
+> **Novità (migrazione Redis, Fasi 1–4)**: dalla Fase 3 la skill **non accede
+> più a Supabase per lo stato di riproduzione** — legge/scrive via gli endpoint
+> interni del BE (`/v1/internal/alexa/*`). Conseguenza: la skill **dipende dal
+> BE raggiungibile** dalla Lambda (SPOF). Se il BE è giù/mal configurato la skill
+> **degrada con un messaggio vocale** (non crash): vedi `GenericExceptionHandler`
+> (eventi AudioPlayer → risposta vuota/silenzio; richieste vocali → speech) e il
+> wrap di `findByUserId` in `PlaybackStarter`. `AccountService.resolveEmail` resta
+> su Supabase Auth admin (Fase 5 rinviata) → le due env `SUPABASE_*` servono ancora.
+
 1. **Build del jar** con **JDK 21** (il pom targetta release 21):
    `build-skill.bat` (forza il JDK 21 se presente) → `target/ebeat-1.0.jar`
    (shaded, ~15 MB).
 2. **Upload** su AWS Lambda della skill (handler `EbeatStreamHandler`).
 3. **Env var Lambda**:
+   - `SKILL_BE_INTERNAL_URL` — **obbligatoria**, base degli endpoint interni,
+     es. `https://<host-prod>/v1/internal/alexa` (**con schema https**, path
+     incluso). null/malformata → speech di fallback, niente crash.
+   - `SKILL_BE_SECRET` — **obbligatoria**, bearer condiviso; **stesso valore**
+     dell'env `SKILL_BE_SECRET` del BE (fail-closed lato BE).
    - `SUPABASE_DB_TRACK_URI` (es. `https://<ref>.supabase.co/rest/v1/current_track`)
-   - `SUPABASE_SERVICE_KEY` (**service-role**, server-side)
-   - `BACKEND_REFRESH_URL` (legacy, non usato a runtime dai flussi attuali)
+     — usata **solo** da `AccountService.resolveEmail` (deriva la base Auth admin).
+   - `SUPABASE_SERVICE_KEY` (**service-role**, server-side) — idem AccountService.
+   - `BACKEND_REFRESH_URL` / `BACKEND_REFILL_URL` / `BACKEND_RESOLVE_URL` —
+     **non usate** a runtime (casi deprecati/disabilitati): omettibili.
 4. Permessi/timeout Lambda adeguati (cold start Java: memoria ≥ 512 MB, timeout ≥ 8 s).
 
 ### 11.4 Alexa Developer Console
@@ -573,8 +589,11 @@ quota `"offset"`). `replacePlaybackQueue` è **atomico** (una sola istruzione).
 
 | Chiave | Dove | Note |
 |---|---|---|
-| `SUPABASE_SERVICE_KEY` | Skill, BE | service-role, **mai** nell'app |
-| `SUPABASE_DB_TRACK_URI` | Skill | endpoint PostgREST `current_track` |
+| `SKILL_BE_INTERNAL_URL` | Skill | base `/v1/internal/alexa` del BE (https, path incluso) |
+| `SKILL_BE_SECRET` | Skill, BE | bearer service-to-service; **stesso valore** sui due lati |
+| `SUPABASE_SERVICE_KEY` | Skill, BE | service-role, **mai** nell'app; skill solo per `resolveEmail` |
+| `SUPABASE_DB_TRACK_URI` | Skill | base Auth admin per `resolveEmail` (Fase 5 rinviata) |
+| `ALEXA_STORE_BACKEND` | BE | `supabase` (default) \| `redis` (migrazione) |
 | `SUPABASE_JWT_SECRET` | BE | minting JWT Realtime |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` | BE, App(`EXPO_PUBLIC_*`) | |
 | `REFRESH_TOKEN_ENCRYPTION_KEYS` | BE | **obbligatoria** (hex 32B, ≥1) |
