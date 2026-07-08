@@ -7,6 +7,7 @@ import com.amazon.ask.model.Response;
 import org.slf4j.Logger;
 import service.AccountService;
 import service.CurrentTrackService;
+import util.I18n;
 
 import java.util.Optional;
 
@@ -44,7 +45,7 @@ public class LoopOffIntentHandler implements IntentRequestHandler {
             }
         }
         return handlerInput.getResponseBuilder()
-                .withSpeech("Loop disattivato.")
+                .withSpeech(I18n.t(intentRequest.getLocale(), "loop_off"))
                 .withShouldEndSession(true)
                 .build();
     }

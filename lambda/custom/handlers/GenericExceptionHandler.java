@@ -4,6 +4,7 @@ import com.amazon.ask.dispatcher.exception.ExceptionHandler;
 import com.amazon.ask.dispatcher.request.handler.HandlerInput;
 import com.amazon.ask.model.Response;
 import org.slf4j.Logger;
+import util.I18n;
 
 import java.util.Optional;
 
@@ -39,9 +40,10 @@ public class GenericExceptionHandler implements ExceptionHandler {
         }
 
         // Richieste vocali (Launch/Intent): messaggio cortese + chiusura pulita.
-        final String speechText = "Si è verificato un problema con ebeat. Riprova tra poco.";
+        String locale = input.getRequestEnvelope().getRequest() != null
+                ? input.getRequestEnvelope().getRequest().getLocale() : null;
         return input.getResponseBuilder()
-                .withSpeech(speechText)
+                .withSpeech(I18n.t(locale, "generic_error"))
                 .withShouldEndSession(true)
                 .build();
     }

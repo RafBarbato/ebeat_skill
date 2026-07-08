@@ -45,10 +45,12 @@ public final class PlaybackStarter {
         boolean resume    = mode == Mode.RESUME;
         boolean sync      = mode == Mode.SYNC;
 
+        String locale = input.getRequestEnvelope().getRequest().getLocale();
+
         String accessToken = input.getRequestEnvelope().getContext().getSystem().getUser().getAccessToken();
         if (accessToken == null) {
             return input.getResponseBuilder()
-                    .withSpeech("Per usare ebeat devi collegare il tuo account. Controlla l'app Alexa.")
+                    .withSpeech(I18n.t(locale, "link_account_card"))
                     .withLinkAccountCard()
                     .withShouldEndSession(true)
                     .build();
@@ -61,7 +63,7 @@ public final class PlaybackStarter {
         } catch (Exception e) {
             LOG.error("Errore risoluzione utente [{}: {}]", e.getClass().getSimpleName(), e.getMessage());
             return input.getResponseBuilder()
-                    .withSpeech("Errore nel riconoscere il tuo account. Riprova.")
+                    .withSpeech(I18n.t(locale, "account_error"))
                     .withShouldEndSession(true)
                     .build();
         }
@@ -88,13 +90,13 @@ public final class PlaybackStarter {
             LOG.error("BE irraggiungibile (findByUserId) [{}: {}]",
                     e.getClass().getSimpleName(), e.getMessage());
             return input.getResponseBuilder()
-                    .withSpeech("Al momento non riesco a raggiungere ebeat. Riprova tra poco.")
+                    .withSpeech(I18n.t(locale, "be_unreachable"))
                     .withShouldEndSession(true)
                     .build();
         }
         if (!maybeTrack.isPresent()) {
             return input.getResponseBuilder()
-                    .withSpeech("Nessuna traccia trovata su ebeat. Avvia la riproduzione dall'app.")
+                    .withSpeech(I18n.t(locale, "no_track"))
                     .withShouldEndSession(true)
                     .build();
         }
@@ -106,7 +108,7 @@ public final class PlaybackStarter {
         if (track.getUrl() == null || track.isExpired()) {
             LOG.warn("URL null o scaduto per {} — richiedo aggiornamento via app", email);
             return input.getResponseBuilder()
-                    .withSpeech("La traccia non è aggiornata. Apri l'app ebeat per aggiornarla, poi riprova.")
+                    .withSpeech(I18n.t(locale, "track_stale"))
                     .withShouldEndSession(true)
                     .build();
         }
@@ -140,22 +142,23 @@ public final class PlaybackStarter {
             }
         }
 
-        String title = track.getTrack_title() != null ? track.getTrack_title() : "la tua musica";
+        String title = track.getTrack_title() != null
+                ? track.getTrack_title() : I18n.t(locale, "default_title");
         String artist = track.getTrack_artist() != null ? track.getTrack_artist() : "";
 
         String speech;
         if (loopOn) {
-            speech = "Riproduco " + title + " in loop.";
+            speech = I18n.t(locale, "play_loop", title);
         } else if (startOver) {
-            speech = "Riavvio " + title + " da capo.";
+            speech = I18n.t(locale, "play_startover", title);
         } else if (resume) {
-            speech = "Riprendo.";
+            speech = I18n.t(locale, "resume");
         } else if (sync) {
-            speech = "Aggiorno.";
+            speech = I18n.t(locale, "sync");
         } else if (artist.isEmpty()) {
-            speech = "Riproduco " + title + " da ebeat.";
+            speech = I18n.t(locale, "play_title", title);
         } else {
-            speech = "Riproduco " + title + " di " + artist + " da ebeat.";
+            speech = I18n.t(locale, "play_title_artist", title, artist);
         }
 
         // Segna che Alexa è il device attivo e sta suonando, così l'app può

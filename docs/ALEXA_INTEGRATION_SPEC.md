@@ -554,13 +554,16 @@ quota `"offset"`). `replacePlaybackQueue` è **atomico** (una sola istruzione).
 2. **Account Linking**: Authorization URI `https://<host>/alexa/oauth/authorize`,
    Access Token URI `https://<host>/alexa/oauth/token`, `client_id/secret`
    coerenti con `ALEXA_OAUTH_*` del BE, scope, redirect (usa `ALEXA_SKILL_ID`).
-3. **Interaction Model** (`models/it.json`, **skill IT-only** — le risposte sono
-   in italiano, la locale `en-US` è stata rimossa): built-in `AMAZON.PauseIntent`,
-   `ResumeIntent`, `NextIntent`, `StartOverIntent`, `LoopOnIntent`, `StopIntent`,
-   `CancelIntent`, `HelpIntent`, `FallbackIntent`, `NavigateHomeIntent` (richiesto
-   Amazon) + custom `MusicPlayIntent`, `SyncIntent`. La ricerca vocale
-   (`PlayTrackIntent`, Yes/No — caso 15) è **rimossa dal modello** (scaffold Java
-   conservato, non esposto finché non re-implementata).
+3. **Interaction Model** (`models/it.json` + `models/en-US.json`, **bilingue
+   IT + EN**): le risposte vocali sono localizzate via `util/I18n` in base al
+   `locale` della richiesta (fallback italiano); i due modelli sono in parità di
+   intent (invocation IT `riproduttore`, EN `ebeat player`). Intent: built-in
+   `AMAZON.Pause/Resume/Next/Previous/StartOver/LoopOn/LoopOff/Repeat/ShuffleOn/
+   ShuffleOff/Stop/Cancel/Help/Fallback/NavigateHome` + custom `MusicPlayIntent`,
+   `SyncIntent`. Controlli AudioPlayer da pulsanti/card gestiti da
+   `PlaybackControllerHandler`. La ricerca vocale (`PlayTrackIntent`, Yes/No —
+   caso 15) è **rimossa dal modello** (scaffold Java conservato). Per aggiungere
+   una lingua: nuovo `models/<locale>.json` + coppie in `I18n`.
 4. **Interfacce**: abilitare **AudioPlayer**.
 5. Distribuzione/certificazione secondo policy Amazon.
 

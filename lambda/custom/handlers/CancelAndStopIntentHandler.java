@@ -7,6 +7,7 @@ import com.amazon.ask.model.Response;
 import org.slf4j.Logger;
 import service.AccountService;
 import service.CurrentTrackService;
+import util.I18n;
 
 import java.util.Optional;
 
@@ -47,7 +48,7 @@ public class CancelAndStopIntentHandler implements IntentRequestHandler {
 
         return handlerInput.getResponseBuilder()
                 .addAudioPlayerStopDirective()
-                .withSpeech("A presto!")
+                .withSpeech(I18n.t(intentRequest.getLocale(), "goodbye"))
                 .withShouldEndSession(true)
                 .build();
     }

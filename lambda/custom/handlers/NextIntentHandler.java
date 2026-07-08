@@ -10,6 +10,7 @@ import service.AccountService;
 import service.CurrentTrackService;
 import service.PlaybackQueueService;
 import util.CurrentTrack;
+import util.I18n;
 import util.QueueItem;
 
 import java.util.Optional;
@@ -42,10 +43,11 @@ public class NextIntentHandler implements IntentRequestHandler {
     @Override
     public Optional<Response> handle(HandlerInput handlerInput, IntentRequest intentRequest) {
         LOG.info("NextIntentHandler invocato");
+        String locale = intentRequest.getLocale();
         String accessToken = handlerInput.getRequestEnvelope().getContext().getSystem().getUser().getAccessToken();
         if (accessToken == null) {
             return handlerInput.getResponseBuilder()
-                    .withSpeech("Per usare ebeat devi collegare il tuo account.")
+                    .withSpeech(I18n.t(locale, "link_account_short"))
                     .withShouldEndSession(true)
                     .build();
         }
@@ -57,7 +59,7 @@ public class NextIntentHandler implements IntentRequestHandler {
             if (!next.isPresent()) {
                 LOG.info("Coda vuota, niente da skippare");
                 return handlerInput.getResponseBuilder()
-                        .withSpeech("Non ci sono altre tracce in coda.")
+                        .withSpeech(I18n.t(locale, "queue_empty"))
                         .withShouldEndSession(true)
                         .build();
             }
@@ -69,7 +71,7 @@ public class NextIntentHandler implements IntentRequestHandler {
                 LOG.warn("Prossima traccia senza URL (position={}): app deve aggiornare",
                         item.getPosition());
                 return handlerInput.getResponseBuilder()
-                        .withSpeech("La prossima traccia non è ancora pronta. Apri l'app ebeat per aggiornare la coda.")
+                        .withSpeech(I18n.t(locale, "next_not_ready"))
                         .withShouldEndSession(true)
                         .build();
             }
@@ -84,7 +86,7 @@ public class NextIntentHandler implements IntentRequestHandler {
                 LOG.error("Promotion in current_track fallita [{}: {}]",
                         e.getClass().getSimpleName(), e.getMessage());
                 return handlerInput.getResponseBuilder()
-                        .withSpeech("Non sono riuscito a passare alla prossima.")
+                        .withSpeech(I18n.t(locale, "next_failed"))
                         .withShouldEndSession(true)
                         .build();
             }
@@ -107,7 +109,7 @@ public class NextIntentHandler implements IntentRequestHandler {
             if (newTrack.getUrl() == null || newTrack.isExpired()) {
                 LOG.warn("URL null/scaduto dopo promote — app deve aggiornare");
                 return handlerInput.getResponseBuilder()
-                        .withSpeech("La traccia non è aggiornata. Apri l'app ebeat per aggiornarla.")
+                        .withSpeech(I18n.t(locale, "track_stale_short"))
                         .withShouldEndSession(true)
                         .build();
             }
@@ -129,7 +131,7 @@ public class NextIntentHandler implements IntentRequestHandler {
             LOG.error("Errore NextIntentHandler [{}: {}]",
                     e.getClass().getSimpleName(), e.getMessage());
             return handlerInput.getResponseBuilder()
-                    .withSpeech("Si e' verificato un errore.")
+                    .withSpeech(I18n.t(locale, "generic_error_short"))
                     .withShouldEndSession(true)
                     .build();
         }

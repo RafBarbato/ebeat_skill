@@ -5,6 +5,7 @@ import com.amazon.ask.dispatcher.request.handler.impl.IntentRequestHandler;
 import com.amazon.ask.model.IntentRequest;
 import com.amazon.ask.model.Response;
 import org.slf4j.Logger;
+import util.I18n;
 
 import java.util.Optional;
 import java.util.Set;
@@ -37,7 +38,7 @@ public class PlaybackControlUnsupportedHandler implements IntentRequestHandler {
         LOG.info("PlaybackControlUnsupportedHandler invocato [intent={}]",
                 intentRequest.getIntent().getName());
         return handlerInput.getResponseBuilder()
-                .withSpeech("Questa funzione non è disponibile su ebeat.")
+                .withSpeech(I18n.t(intentRequest.getLocale(), "not_supported"))
                 .withShouldEndSession(true)
                 .build();
     }
