@@ -16,11 +16,32 @@
           "samples": ["concludi"]
         },
         {
-          "name": "SimpleHelloIntent",
-          "slots": [],
-          "samples": [
-            "hello"
-          ]
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.PauseIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.ResumeIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NextIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StartOverIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.LoopOnIntent",
+          "samples": []
         },
         {
           "name": "MusicPlayIntent",
@@ -33,106 +54,6 @@
           ]
         },
         {
-          "name": "MusicStopIntent",
-          "slots": [],
-          "samples": [
-            "stop",
-            "ferma",
-            "fermare",
-            "finisci"
-          ]
-        },
-        {
-          "name": "SpazzaturaIntent",
-          "slots": [],
-          "samples": [
-            "parlami di Ilenia"
-          ]
-        },
-        {
-          "name": "AMAZON.NavigateHomeIntent",
-          "samples": []
-        },
-        {
-          "name": "AMAZON.YesIntent",
-          "samples": []
-        },
-        {
-          "name": "AMAZON.NoIntent",
-          "samples": []
-        },
-        {
-          "name": "WhatCanIBuyIntent",
-          "slots": [],
-          "samples": [
-            "what can I purchase",
-            "what can I buy"
-          ]
-        },
-        {
-          "name": "BuyGreetingsPackIntent",
-          "slots": [],
-          "samples": [
-            "give me special greeting",
-            "special greeting",
-            "say hello in other languages",
-            "Get greetings pack",
-            "Get greeting pack",
-            "Buy greetings pack"
-          ]
-        },
-        {
-          "name": "PurchaseHistoryIntent",
-          "slots": [],
-          "samples": [
-            "order history",
-            "what have I purchased",
-            "what have I bought"
-          ]
-        },
-        {
-          "name": "BuyPremiumSubscriptionIntent",
-          "slots": [],
-          "samples": [
-            "get premium subscription",
-            "buy premium subscription"
-          ]
-        },
-        {
-          "name": "CancelPremiumSubscriptionIntent",
-          "slots": [],
-          "samples": [
-            "refund subscription",
-            "cancel subscription",
-            "cancel premium subscription"
-          ]
-        },
-        {
-          "name": "RefundGreetingsPackIntent",
-          "slots": [],
-          "samples": [
-            "return greetings pack",
-            "refund greetings pack",
-            "cancel greetings pack"
-          ]
-        },
-        {
-          "name": "AMAZON.FallbackIntent",
-          "samples": []
-        },
-        {
-          "name": "AMAZON.PauseIntent",
-          "samples": []
-        },
-        {
-          "name": "AMAZON.NextIntent",
-          "samples": []
-        },
-        {
-          "name": "AMAZON.ResumeIntent",
-          "samples": []
-        },
-        {
           "name": "SyncIntent",
           "slots": [],
           "samples": [
@@ -143,28 +64,6 @@
             "rinfresca",
             "aggiornati",
             "sincronizzati"
-          ]
-        },
-        {
-          "name": "PlayTrackIntent",
-          "slots": [
-            { "name": "query", "type": "AMAZON.SearchQuery" }
-          ],
-          "samples": [
-            "suona {query}",
-            "metti {query}",
-            "mettere {query}",
-            "riproduci {query}",
-            "riprodurre {query}",
-            "voglio sentire {query}",
-            "fammi sentire {query}",
-            "fai partire {query}",
-            "fai sentire {query}",
-            "metti la canzone {query}",
-            "suona la canzone {query}",
-            "riproduci la canzone {query}",
-            "cerca {query}",
-            "trova {query}"
           ]
         }
       ],

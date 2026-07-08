@@ -554,10 +554,13 @@ quota `"offset"`). `replacePlaybackQueue` è **atomico** (una sola istruzione).
 2. **Account Linking**: Authorization URI `https://<host>/alexa/oauth/authorize`,
    Access Token URI `https://<host>/alexa/oauth/token`, `client_id/secret`
    coerenti con `ALEXA_OAUTH_*` del BE, scope, redirect (usa `ALEXA_SKILL_ID`).
-3. **Interaction Model**: intent built-in richiesti (`AMAZON.PauseIntent`,
-   `ResumeIntent`, `NextIntent`, `StartOverIntent`, `LoopOnIntent`,
-   `StopIntent`, `CancelIntent`) + eventuali custom (`SyncIntent`;
-   `PlayTrackIntent` è presente ma il caso 15 è disabilitato).
+3. **Interaction Model** (`models/it.json`, **skill IT-only** — le risposte sono
+   in italiano, la locale `en-US` è stata rimossa): built-in `AMAZON.PauseIntent`,
+   `ResumeIntent`, `NextIntent`, `StartOverIntent`, `LoopOnIntent`, `StopIntent`,
+   `CancelIntent`, `HelpIntent`, `FallbackIntent`, `NavigateHomeIntent` (richiesto
+   Amazon) + custom `MusicPlayIntent`, `SyncIntent`. La ricerca vocale
+   (`PlayTrackIntent`, Yes/No — caso 15) è **rimossa dal modello** (scaffold Java
+   conservato, non esposto finché non re-implementata).
 4. **Interfacce**: abilitare **AudioPlayer**.
 5. Distribuzione/certificazione secondo policy Amazon.
 
