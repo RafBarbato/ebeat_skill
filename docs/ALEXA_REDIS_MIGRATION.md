@@ -4,7 +4,7 @@
 > `playback_queue`, `alexa_device`) da **Supabase** a **Redis**, in vista della
 > **dismissione di Supabase**.
 > Branch: `feature/skill_alexa_redis` (beatly + ebeat_skill).
-> Stato: **IN CORSO** — Fasi 1–4 implementate (BE + skill + app, branch
+> Stato: **IN CORSO** — Fasi 1–4 + 6 (codice) implementate (BE + skill + app, branch
 > `feature/skill_alexa_redis`). Retro-compatibili: flag BE default `supabase`.
 > Skill e app parlano entrambe al BE; l'app riceve i realtime via SSE. Restano
 > Fase 5 (resolveEmail via BE) e Fase 6 (cutover flag→redis + cleanup Supabase).
@@ -210,9 +210,14 @@ comune.
   `getRealtimeToken.ts` e endpoint `/realtime-token` restano come legacy →
   cleanup Fase 6). tsc + eslint puliti.
 - **Fase 5 — Auth map.** `resolveEmail` via BE invece di Supabase admin.
-- **Fase 6 — Cutover + cleanup.** `ALEXA_STORE_BACKEND=redis` in prod; rimozione
-  `SupabaseAlexaStore`, `ebeat_skill.sql` (parte Alexa), env Supabase Alexa,
-  JWT-Supabase minting. Aggiornare `ALEXA_INTEGRATION_SPEC.md`.
+- **Fase 6 — Cutover + cleanup. ✅ CODICE FATTO.** Redis è l'**unica**
+  implementazione: rimossa la classe Supabase `AlexaDeviceRepository` (raw SQL),
+  il flag `ALEXA_STORE_BACKEND`, l'endpoint `/v2/alexa/realtime-token` + minting
+  JWT Supabase (morto dopo la Fase 4/SSE) e l'orfano `getRealtimeToken.ts` lato
+  app. `SUPABASE_JWT_SECRET` **resta** (usato dall'auth app, non solo Alexa).
+  **Da fare (ops)**: droppare le tabelle Supabase `current_track`/
+  `playback_queue`/`alexa_device` (ora vestigiali) e la parte Alexa di
+  `ebeat_skill.sql`; provisionare Redis in prod (nessun fallback Supabase).
 
 Ordine consigliato: **1 → 2 → (3 ∥ 4) → 5 → 6**. Fasi 1–2 sono retro-compatibili
 (l'app/skill continuano su Supabase finché non si spostano in 3–4).
