@@ -23,6 +23,7 @@ public class EbeatStreamHandler extends SkillStreamHandler {
                         new PlaybackStoppedHandler(),
                         new PlaybackNearlyFinishedHandler(),
                         new PlaybackFailedHandler(),
+                        new PlaybackControllerHandler(),
                         new PlaybackEventLogHandler(),
                         new HelpIntentHandler(),
                         new FallbackIntentHandler(),
