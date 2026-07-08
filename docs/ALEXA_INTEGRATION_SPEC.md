@@ -557,7 +557,7 @@ quota `"offset"`). `replacePlaybackQueue` è **atomico** (una sola istruzione).
 3. **Interaction Model** (`models/it.json` + `models/en-US.json`, **bilingue
    IT + EN**): le risposte vocali sono localizzate via `util/I18n` in base al
    `locale` della richiesta (fallback italiano); i due modelli sono in parità di
-   intent (invocation IT `riproduttore`, EN `ebeat player`). Intent: built-in
+   intent (invocation `ebeat music`, IT+EN). Intent: built-in
    `AMAZON.Pause/Resume/Next/Previous/StartOver/LoopOn/LoopOff/Repeat/ShuffleOn/
    ShuffleOff/Stop/Cancel/Help/Fallback/NavigateHome` + custom `MusicPlayIntent`,
    `SyncIntent`. Controlli AudioPlayer da pulsanti/card gestiti da

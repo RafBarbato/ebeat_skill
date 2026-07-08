@@ -48,8 +48,8 @@ effimero, ripetere se il BE/Redis si riavvia prima della review.
 ## 3. Metadati Distribution (testi pronti)
 
 > Nomi: il **public name** (card store) e l'**invocation name** (come si apre a
-> voce) possono differire. **Raccomandazione**: allineare l'invocation al brand
-> (`ebeat`) invece di `riproduttore` (generico → possibile rilievo). Vedi §7.
+> voce) possono differire. **Invocation name scelto: `ebeat music`** (universale
+> IT+EN — due parole col brand, evita il rischio della parola singola/generica).
 
 ### IT (it-IT)
 - **Public name**: `ebeat`
@@ -60,9 +60,9 @@ effimero, ripetere se il BE/Redis si riavvia prima della review.
    in cui l'hai lasciata nell'app, passa alla traccia successiva, metti in pausa
    o in loop, tutto a voce. Richiede l'app ebeat e il collegamento dell'account.`
 - **Example phrases** (3, con invocation name):
-  1. `Alexa, apri riproduttore`
-  2. `Alexa, chiedi a riproduttore di mettere in pausa`
-  3. `Alexa, chiedi a riproduttore la prossima`
+  1. `Alexa, apri ebeat music`
+  2. `Alexa, chiedi a ebeat music di mettere in pausa`
+  3. `Alexa, chiedi a ebeat music la prossima`
 
 ### EN (en-US)
 - **Public name**: `ebeat`
@@ -73,9 +73,9 @@ effimero, ripetere se il BE/Redis si riavvia prima della review.
    off in the app, skip to the next track, pause or loop — all by voice.
    Requires the ebeat app and account linking.`
 - **Example phrases**:
-  1. `Alexa, open ebeat player`
-  2. `Alexa, ask ebeat player to pause`
-  3. `Alexa, ask ebeat player to skip`
+  1. `Alexa, open ebeat music`
+  2. `Alexa, ask ebeat music to pause`
+  3. `Alexa, ask ebeat music to skip`
 
 ### Comuni
 - **Category**: `Music & Audio`
@@ -136,7 +136,7 @@ effimero, ripetere se il BE/Redis si riavvia prima della review.
 > 1. In the Alexa app: Skills → ebeat → **Link Account** → sign in with:
 >    - email: `<test-email>`
 >    - password: `<test-password>`
-> 2. Say **"Alexa, open ebeat player"** → the skill starts playing a track.
+> 2. Say **"Alexa, open ebeat music"** → the skill starts playing a track.
 > 3. Controls: "Alexa, pause" / "Alexa, resume" / "Alexa, next" /
 >    "Alexa, loop" / "Alexa, stop". Playback card buttons (play/pause/next)
 >    also work.
@@ -151,9 +151,8 @@ inviare, o il punto 2 fallisce.
 
 ## 7. Da decidere / input necessari da te
 - [ ] **Copyright** (§0.1) — via libera o ripiego su distribuzione privata/beta?
-- [ ] **Invocation name**: tenere `riproduttore`/`ebeat player` o **allineare a
-      `ebeat`** su entrambe le locale? (richiede rebuild del modello — posso
-      aggiornare i `models/*.json`.)
+- [x] **Invocation name**: `ebeat music` (universale IT+EN) — impostato nei
+      `models/*.json`. Ricorda il **Build Model** in Console.
 - [ ] **Public name** definitivo (proposto: `ebeat`).
 - [ ] **support-email** per privacy policy e contatto publisher.
 - [ ] **URL hosting** della privacy policy.
