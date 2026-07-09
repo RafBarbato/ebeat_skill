@@ -60,9 +60,9 @@ effimero, ripetere se il BE/Redis si riavvia prima della review.
    in cui l'hai lasciata nell'app, passa alla traccia successiva, metti in pausa
    o in loop, tutto a voce. Richiede l'app ebeat e il collegamento dell'account.`
 - **Example phrases** (3, con invocation name):
-  1. `Alexa, apri ebeat music`
-  2. `Alexa, chiedi a ebeat music di mettere in pausa`
-  3. `Alexa, chiedi a ebeat music la prossima`
+  1. `Alexa, apri ebeat musica`
+  2. `Alexa, chiedi a ebeat musica di mettere in pausa`
+  3. `Alexa, chiedi a ebeat musica la prossima`
 
 ### EN (en-US)
 - **Public name**: `ebeat`
