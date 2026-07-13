@@ -528,8 +528,11 @@ quota `"offset"`). `replacePlaybackQueue` è **atomico** (una sola istruzione).
 > BE raggiungibile** dalla Lambda (SPOF). Se il BE è giù/mal configurato la skill
 > **degrada con un messaggio vocale** (non crash): vedi `GenericExceptionHandler`
 > (eventi AudioPlayer → risposta vuota/silenzio; richieste vocali → speech) e il
-> wrap di `findByUserId` in `PlaybackStarter`. `AccountService.resolveEmail` resta
-> su Supabase Auth admin (Fase 5 rinviata) → le due env `SUPABASE_*` servono ancora.
+> wrap di `findByUserId` in `PlaybackStarter`. **Fase 5 fatta**:
+> `AccountService.resolveEmail` ora passa dal BE (`POST /internal/alexa/resolve`),
+> **la skill non tocca più Supabase** (le env `SUPABASE_*` non servono più al
+> codice attivo). L'access token OAuth è ora un **token opaco a scadenza** (non
+> più lo UUID utente in chiaro): fix di sicurezza, vedi §6.
 
 1. **Build del jar** con **JDK 21** (il pom targetta release 21):
    `build-skill.bat` (forza il JDK 21 se presente) → `target/ebeat-1.0.jar`
@@ -541,11 +544,14 @@ quota `"offset"`). `replacePlaybackQueue` è **atomico** (una sola istruzione).
      incluso). null/malformata → speech di fallback, niente crash.
    - `SKILL_BE_SECRET` — **obbligatoria**, bearer condiviso; **stesso valore**
      dell'env `SKILL_BE_SECRET` del BE (fail-closed lato BE).
-   - `SUPABASE_DB_TRACK_URI` (es. `https://<ref>.supabase.co/rest/v1/current_track`)
-     — usata **solo** da `AccountService.resolveEmail` (deriva la base Auth admin).
-   - `SUPABASE_SERVICE_KEY` (**service-role**, server-side) — idem AccountService.
+   - `SUPABASE_DB_TRACK_URI` — **non più necessaria** (Fase 5: `resolveEmail` via
+     BE). Rimovibile.
+   - `SUPABASE_SERVICE_KEY` — **non più usata** dal codice attivo (solo dallo
+     scaffold search irraggiungibile). Rimovibile.
    - `BACKEND_REFRESH_URL` / `BACKEND_REFILL_URL` / `BACKEND_RESOLVE_URL` —
      **non usate** a runtime (casi deprecati/disabilitati): omettibili.
+   - **Prerequisito DB**: creare la tabella `alexa_access_tokens` (vedi
+     `ebeat_skill.sql`) — senza, `/internal/alexa/resolve` va in 500.
 4. Permessi/timeout Lambda adeguati (cold start Java: memoria ≥ 512 MB, timeout ≥ 8 s).
 
 ### 11.4 Alexa Developer Console
@@ -597,8 +603,8 @@ quota `"offset"`). `replacePlaybackQueue` è **atomico** (una sola istruzione).
 |---|---|---|
 | `SKILL_BE_INTERNAL_URL` | Skill | base `/v1/internal/alexa` del BE (https, path incluso) |
 | `SKILL_BE_SECRET` | Skill, BE | bearer service-to-service; **stesso valore** sui due lati |
-| `SUPABASE_SERVICE_KEY` | Skill, BE | service-role, **mai** nell'app; skill solo per `resolveEmail` |
-| `SUPABASE_DB_TRACK_URI` | Skill | base Auth admin per `resolveEmail` (Fase 5 rinviata) |
+| `SUPABASE_SERVICE_KEY` | BE | service-role (admin user lookup + OTP), **mai** nell'app; **skill non la usa più** (Fase 5) |
+| `SUPABASE_DB_TRACK_URI` | — | **dismessa dalla skill** (Fase 5: `resolveEmail` via BE) |
 | `ALEXA_STORE_BACKEND` | BE | `supabase` (default) \| `redis` (migrazione) |
 | `SUPABASE_JWT_SECRET` | BE | minting JWT Realtime |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` | BE, App(`EXPO_PUBLIC_*`) | |

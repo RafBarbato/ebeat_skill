@@ -35,7 +35,8 @@ effimero, ripetere se il BE/Redis si riavvia prima della review.
 - **Modelli**: importare `models/it.json` e `models/en-US.json`, **Build Model**
   per ciascuna locale.
 - **Env Lambda**: `SKILL_BE_INTERNAL_URL`, `SKILL_BE_SECRET`,
-  `SUPABASE_DB_TRACK_URI`, `SUPABASE_SERVICE_KEY` (vedi spec §11.3/§12).
+  (le `SUPABASE_*` non servono più alla skill — Fase 5). Vedi spec §11.3/§12.
+  Prerequisito DB: tabella `alexa_access_tokens` creata (`ebeat_skill.sql`).
 
 ## 2. Account linking (OAuth)
 - Authorization URI: `https://<host>/alexa/oauth/authorize`

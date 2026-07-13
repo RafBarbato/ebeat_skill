@@ -31,7 +31,7 @@ echo.
 echo  Ricorda le env var sulla Lambda:
 echo    SKILL_BE_INTERNAL_URL  (es. https://host/v1/internal/alexa)
 echo    SKILL_BE_SECRET        (bearer condiviso col BE)
-echo    SUPABASE_DB_TRACK_URI, SUPABASE_SERVICE_KEY  (solo AccountService)
+echo    (SUPABASE_* non piu' necessarie: Fase 5, resolveEmail via BE)
 echo    BACKEND_REFRESH_URL, USER_EMAIL
 echo ============================================================
 endlocal

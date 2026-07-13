@@ -209,7 +209,13 @@ comune.
   `getRealtimeToken`/`SUPABASE.channel` rimossi dal watcher (file
   `getRealtimeToken.ts` e endpoint `/realtime-token` restano come legacy →
   cleanup Fase 6). tsc + eslint puliti.
-- **Fase 5 — Auth map.** `resolveEmail` via BE invece di Supabase admin.
+- **Fase 5 — Auth map. ✅ FATTA.** `resolveEmail` ora passa dal BE
+  (`POST /internal/alexa/resolve`): la skill non chiama più Supabase admin
+  (rimosso `SupabaseRestClient`, env `SUPABASE_*` dismesse). Insieme: **fix di
+  sicurezza dell'access token OAuth** — non è più lo UUID utente in chiaro (bearer
+  eterno, non segreto) ma un **token opaco casuale a scadenza 1h** salvato in
+  `alexa_access_tokens`, validato dal BE. `AlexaOAuthService.mintAccessToken` +
+  `resolveEmailByAccessToken`. Il codice attivo della skill è ora Supabase-free.
 - **Fase 6 — Cutover + cleanup. ✅ CODICE FATTO.** Redis è l'**unica**
   implementazione: rimossa la classe Supabase `AlexaDeviceRepository` (raw SQL),
   il flag `ALEXA_STORE_BACKEND`, l'endpoint `/v2/alexa/realtime-token` + minting
@@ -265,10 +271,10 @@ Ordine consigliato: **1 → 2 → (3 ∥ 4) → 5 → 6**. Fasi 1–2 sono retro
 
 **Prese** (2026-07-07):
 1. **Realtime = SSE** (§6). La skill solo invia, l'app solo riceve.
-2. **Supabase AUTH resta per ora** — si migra **solo storage + realtime**. Quindi
-   la **Fase 5 (auth map) è rinviata**: `AccountService.resolveEmail` continua via
-   Supabase admin finché non si toglie anche l'auth. OAuth account-linking
-   invariato.
+2. ~~**Supabase AUTH resta per ora**~~ **SUPERATO**: la Fase 5 è stata fatta —
+   `resolveEmail` passa dal BE, la skill è Supabase-free. Il BE usa ancora
+   Supabase Auth per OTP + admin user lookup (lato server). OAuth account-linking
+   invariato nel flusso, ma l'access token è ora opaco a scadenza (fix sicurezza).
 3. **HA del BE**: non è un problema per ora → SPOF accettato in questa fase
    (retry/backoff lato skill comunque consigliati).
 

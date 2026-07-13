@@ -12,7 +12,10 @@
 --       - l'app riceve i realtime via SSE /v2/alexa/events (non più Realtime);
 --       - /v2/alexa/realtime-token è stato rimosso.
 --     Conservate solo per riferimento/rollback. Rimozione (DROP) = azione ops
---     manuale e irreversibile, non inclusa qui. Non estendere questo schema.
+--     manuale e irreversibile, non inclusa qui. Non estendere queste tabelle.
+--
+--     NB: la deprecazione riguarda SOLO le tabelle di stato playback qui sopra.
+--     La sezione OAuth in fondo (alexa_access_tokens) è ATTIVA e su Postgres.
 -- =====================================================================
 
 -- Rinomina tabella urls -> current_track (solo se urls esiste ancora)
@@ -157,3 +160,25 @@ DO $$ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE playback_queue;
   END IF;
 END $$;
+
+-- =====================================================================
+-- OAuth account-linking (ATTIVO — NON deprecato: resta su Postgres).
+-- Le tabelle alexa_auth_codes / alexa_refresh_tokens sono gestite altrove;
+-- qui aggiungiamo alexa_access_tokens (fix sicurezza: l'access token è un
+-- token opaco casuale a scadenza, non più lo UUID utente in chiaro).
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS alexa_access_tokens (
+  token       TEXT        PRIMARY KEY,
+  user_id     TEXT        NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS alexa_access_tokens_user_idx ON alexa_access_tokens(user_id);
+CREATE INDEX IF NOT EXISTS alexa_access_tokens_expires_idx ON alexa_access_tokens(expires_at);
+
+COMMENT ON TABLE alexa_access_tokens IS
+  'Access token OAuth opachi a scadenza (ATTIVA). token -> user_id, validato dal BE (POST /internal/alexa/resolve). Sostituisce lo UUID utente in chiaro come bearer.';
+
+ALTER TABLE alexa_access_tokens ENABLE ROW LEVEL SECURITY;
