@@ -180,5 +180,7 @@ CREATE INDEX IF NOT EXISTS alexa_access_tokens_expires_idx ON alexa_access_token
 
 COMMENT ON TABLE alexa_access_tokens IS
   'Access token OAuth opachi a scadenza (ATTIVA). token -> user_id, validato dal BE (POST /internal/alexa/resolve). Sostituisce lo UUID utente in chiaro come bearer.';
+COMMENT ON COLUMN alexa_access_tokens.token IS
+  'SHA-256 (hex) del token, NON il grezzo: un leak del DB non è riutilizzabile. Idem per alexa_auth_codes.code e alexa_refresh_tokens.token.';
 
 ALTER TABLE alexa_access_tokens ENABLE ROW LEVEL SECURITY;
