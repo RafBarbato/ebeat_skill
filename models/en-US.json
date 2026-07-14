@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "ebeat music",
+      "invocationName": "ibit",
       "intents": [
         {
           "name": "AMAZON.CancelIntent",
